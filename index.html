@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tank City</title>
+  <link href="https://fonts.cdnfonts.com/css/press-start-2p" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    #hud {
+      position: absolute;
+      top: 1vw;
+      left: 1vw;
+      color: white;
+      font-family: 'Press Start 2P', sans-serif;
+      font-size: clamp(10px, 2.5vw, 12px);
+      text-shadow: 1px 1px 2px #000;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #baseHealth {
+      position: absolute;
+      bottom: 1vw;
+      left: 1vw;
+      width: clamp(120px, 20vw, 150px);
+      height: 12px;
+      background: #333;
+      border: 2px solid #fff;
+      z-index: 10;
+    }
+    #baseHealthBar {
+      height: 100%;
+      background: #ff0000;
+      width: 100%;
+      transition: width 0.3s ease;
+    }
+    #menu, #pauseMenu, #gameOver {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: white;
+      font-family: 'Press Start 2P', sans-serif;
+      z-index: 20;
+      width: 90%;
+      max-width: 400px;
+      padding: 15px;
+      background: rgba(0, 0, 0, 0.9);
+      border-radius: 8px;
+    }
+    #menu h1, #pauseMenu h1, #gameOver h1 {
+      font-size: clamp(18px, 5vw, 24px);
+      margin-bottom: 12px;
+    }
+    #gameOver p {
+      font-size: clamp(10px, 3vw, 14px);
+      margin: 6px 0;
+    }
+    button {
+      font-family: 'Press Start 2P', sans-serif;
+      font-size: clamp(10px, 2.5vw, 12px);
+      padding: 8px 16px;
+      margin: 4px;
+      cursor: pointer;
+      background: #444;
+      color: white;
+      border: 2px solid #fff;
+      border-radius: 5px;
+      transition: background 0.2s;
+      touch-action: manipulation;
+      width: clamp(100px, 30vw, 140px);
+    }
+    button:hover {
+      background: #666;
+    }
+    #helpModal {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 12px;
+      font-family: 'Press Start 2P', sans-serif;
+      max-width: 90%;
+      width: 350px;
+      border-radius: 8px;
+      z-index: 30;
+    }
+    #helpModal h2 {
+      font-size: clamp(14px, 4vw, 18px);
+      margin-bottom: 8px;
+    }
+    #helpModal h3 {
+      font-size: clamp(10px, 3vw, 14px);
+      margin: 6px 0;
+    }
+    #helpModal ul {
+      list-style: none;
+      padding: 0;
+      text-align: left;
+    }
+    #helpModal li {
+      font-size: clamp(8px, 2.5vw, 10px);
+      margin: 4px 0;
+    }
+    #flash {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 0, 0, 0);
+      pointer-events: none;
+      z-index: 15;
+    }
+    #touchControls {
+      display: none;
+      position: fixed;
+      bottom: 10px;
+      width: 100%;
+      z-index: 20;
+      pointer-events: none;
+    }
+    .touch-button {
+      position: absolute;
+      background: rgba(255, 255, 255, 0.4);
+      border: 2px solid #fff;
+      border-radius: 12px;
+      width: clamp(50px, 15vw, 70px);
+      height: clamp(50px, 15vw, 70px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Press Start 2P', sans-serif;
+      font-size: clamp(10px, 3vw, 14px);
+      color: white;
+      pointer-events: auto;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    #touchLeft { left: 10px; }
+    #touchRight { left: clamp(80px, 20vw, 100px); }
+    #touchUp { left: clamp(45px, 12vw, 55px); bottom: clamp(70px, 20vw, 90px); }
+    #touchDown { left: clamp(45px, 12vw, 55px); bottom: 0; }
+    #touchShoot { right: 10px; }
+    @media (max-width: 600px) {
+      #touchControls {
+        display: flex;
+        justify-content: space-between;
+      }
+      #hud {
+        font-size: clamp(8px, 2.5vw, 10px);
+        top: 5px;
+        left: 5px;
+      }
+      #baseHealth {
+        width: clamp(100px, 25vw, 120px);
+        height: 10px;
+      }
+      #menu, #pauseMenu, #gameOver {
+        width: 95%;
+        padding: 10px;
+      }
+      button {
+        font-size: clamp(8px, 2.5vw, 10px);
+        padding: 6px 12px;
+        width: clamp(80px, 30vw, 120px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">Lives: 3 | Score: 0 | Level: 1 | Wave: 1 | Multiplier: x1</div>
+  <div id="baseHealth"><div id="baseHealthBar"></div></div>
+  <div id="menu">
+    <h1>TANK CITY</h1>
+    <button id="startButton">START</button>
+    <button id="twoPlayerButton">2 PLAYER</button>
+    <button id="helpButton">HELP</button>
+  </div>
+  <div id="pauseMenu" style="display: none;">
+    <h1>PAUSED</h1>
+    <button id="resumeButton">RESUME</button>
+    <button id="quitButton">QUIT</button>
+  </div>
+  <div id="gameOver" style="display: none;">
+    <h1>GAME OVER</h1>
+    <p id="finalScore"></p>
+    <p id="highScore"></p>
+    <button id="restartButton">RESTART</button>
+    <button id="helpButtonGameOver">HELP</button>
+  </div>
+  <div id="helpModal">
+    <h2>HELP - CONTROLS & OBJECTIVES</h2>
+    <h3>Controls (Player 1):</h3>
+    <ul>
+      <li>Move: Arrow Keys (WASD) or Touch D-Pad (Mobile)</li>
+      <li>Shoot: Space or Shoot Button (Mobile)</li>
+    </ul>
+    <h3>Controls (Player 2):</h3>
+    <ul>
+      <li>Move: I, J, K, L</li>
+      <li>Shoot: U</li>
+    </ul>
+    <h3>Objectives:</h3>
+    <ul>
+      <li>Protect the base (eagle) from enemy tanks.</li>
+      <li>Destroy 20 enemy tanks per stage to advance.</li>
+      <li>Collect power-ups for bonuses.</li>
+    </ul>
+    <h3>Power-Ups:</h3>
+    <ul>
+      <li>Health (Red): +1 Life (up to 5)</li>
+      <li>Bomb (Green): Destroys all enemies</li>
+      <li>Clock (Blue): Freezes enemies for 5 seconds</li>
+      <li>Shield (Yellow): Invincibility for 10 seconds</li>
+      <li>Rapid Fire (Pink): Faster firing for 10 seconds</li>
+      <li>Power (Cyan): Stronger bullets for 8 seconds</li>
+      <li>Life (White): +1 Extra Life</li>
+      <li>Cooldown (Purple): Reduces movement cooldown</li>
+    </ul>
+    <button onclick="document.getElementById('helpModal').style.display = 'none'">CLOSE</button>
+  </div>
+  <div id="flash"></div>
+  <div id="touchControls">
+    <div id="touchLeft" class="touch-button">←</div>
+    <div id="touchRight" class="touch-button">→</div>
+    <div id="touchUp" class="touch-button">↑</div>
+    <div id="touchDown" class="touch-button">↓</div>
+    <div id="touchShoot" class="touch-button">SHOOT</div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+body {
+  margin: 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, #e60012 0%, #ffffff 50%, #0051ba 100%);
+  font-family: 'Press Start 2P', cursive;
+  user-select: none;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+}
+#hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: #e60012;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px;
+  border: 2px solid #0051ba;
+  border-radius: 5px;
+  display: none;
+  text-shadow: 1px 1px 0 #000;
+}
+#baseHealth {
+  position: absolute;
+  top: 40px;
+  left: 10px;
+  width: 100px;
+  height: 10px;
+  background: #ccc;
+  border: 1px solid #000;
+}
+#baseHealthBar {
+  height: 100%;
+  background: #00ff00;
+  width: 100%;
+  transition: width 0.3s;
+}
+#menu, #gameOver, #pauseMenu {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 20px;
+  border: 3px solid #0051ba;
+  border-radius: 10px;
+  text-align: center;
+  color: #e60012;
+  box-shadow: 0 0 20px rgba(0, 81, 186, 0.6);
+}
+#menu button, #gameOver button, #pauseMenu button {
+  display: block;
+  width: 200px;
+  padding: 10px;
+  margin: 10px auto;
+  font-size: 16px;
+  cursor: pointer;
+  background: linear-gradient(45deg, #e60012, #ff4d4d);
+  border: 2px solid #0051ba;
+  color: #ffffff;
+  border-radius: 8px;
+  transition: transform 0.2s;
+}
+#menu button:hover, #gameOver button:hover, #pauseMenu button:hover {
+  transform: scale(1.05);
+}
+#helpModal {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.95);
+  padding: 20px;
+  border: 3px solid #0051ba;
+  border-radius: 10px;
+  color: #e60012;
+  z-index: 10;
+  max-height: 80vh;
+  overflow-y: auto;
+  text-align: left;
+}
+#helpModal h2 {
+  text-align: center;
+}
+#helpModal button {
+  display: block;
+  margin: 10px auto;
+  width: 100px;
+}
+#helpModal:target {
+  display: block;
+}
+#flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #ff0000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
