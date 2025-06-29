@@ -11,7 +11,7 @@ const colors = {
   bulletTrail: 0xffffff
 };
 
-const directions = [[1, 0], [0, 1], [-1, 0], [0, -1]]; // Right, Down, Left, Up
+const directions = [[-1, 0], [0, 1], [1, 0], [0, -1]]; // Right, Down, Left, Up
 
 const modelCache = {
   player: null,
@@ -29,10 +29,10 @@ const bulletPool = {
     if (this.pool.length > 0) {
       bullet = this.pool.pop();
       bullet.mesh.visible = true;
-      bullet.mesh.scale.set(Math.max(0.3, power * 0.5), Math.max(0.3, power * 0.5), Math.max(0.3, power * 0.5));
+      bullet.mesh.scale.set(Math.max(0.75, power * 0.75), Math.max(0.75, power * 0.75), Math.max(0.75, power * 0.75));
     } else {
-      const bulletRadius = 0.05 * Math.max(0.3, power);
-      const geometry = new THREE.SphereGeometry(bulletRadius, 8, 8);
+      const bulletRadius = 0.05 * Math.max(0.75, power);
+      const geometry = new THREE.SphereGeometry(bulletRadius, 10, 10);
       const material = new THREE.MeshStandardMaterial({
         color: colors.bullet,
         emissive: 0x444400,
@@ -572,7 +572,7 @@ const shoot = (shooter, isPlayer, scene, gridWidth, gridHeight, soundEffects) =>
   const dir = shooter.dir;
   const scale = shooter.mesh.userData.scale || 1.0;
 
-  const barrelTipLocal = new THREE.Vector3(0, 0.3, 0.8);
+  const barrelTipLocal = new THREE.Vector3(-1.65, 0.15, 0);
   const barrelTipWorld = barrelTipLocal.clone();
   shooter.mesh.localToWorld(barrelTipWorld);
 

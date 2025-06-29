@@ -31,15 +31,13 @@ rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
   scene.background = texture;
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
-// Texture loader with fallback
 const textureLoader = new THREE.TextureLoader();
 const fallbackTexture = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQYA4eB4YgAAAABJRU5ErkJggg==');
 
-// Ground textures
 const groundTextures = {
   basecolor: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_BaseColor.jpg', undefined, undefined, (error) => console.error('Failed to load ground basecolor:', error)) || fallbackTexture,
   roughness: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
-  normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.jpg', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture
+  normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.png', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture
 };
 Object.values(groundTextures).forEach(tex => {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -80,15 +78,76 @@ const audioFiles = {
   baseHit: '/explosion.wav',
   bgm: '/background-music-224633.mp3'
 };
-Object.keys(audioFiles).forEach(key => {
-  audioLoader.load(audioFiles[key], buffer => {
-    soundEffects[key].setBuffer(buffer);
-    if (key === 'bgm') {
-      soundEffects.bgm.setLoop(true);
-      soundEffects.bgm.setVolume(0.3);
+const audioLoaded = {
+  explosion: false,
+  shoot: false,
+  hit: false,
+  powerUp: false,
+  baseHit: false,
+  bgm: false
+};
+
+// Function to safely play a sound
+const playSound = (sound, volume = null) => {
+  if (sound && audioLoaded[sound.name] && sound.buffer && !sound.isPlaying) {
+    if (volume !== null) sound.setVolume(volume);
+    try {
+      sound.play();
+    } catch (error) {
+      console.warn(`Failed to play sound ${sound.name}:`, error);
     }
-  }, undefined, (error) => console.error(`Failed to load audio: ${audioFiles[key]}`));
+  }
+};
+
+// Resume audio context on user interaction
+const resumeAudioContext = () => {
+  if (THREE.AudioContext.getContext().state === 'suspended') {
+    THREE.AudioContext.getContext().resume().then(() => {
+      console.log('Audio context resumed');
+      if (gameState.running && !gameState.paused && audioLoaded.bgm) {
+        playSound(soundEffects.bgm, 0.3);
+      }
+    }).catch(err => console.error('Failed to resume audio context:', err));
+  }
+};
+
+// Load audio files with retry mechanism
+const loadAudioWithRetry = (url, sound, key, retries = 3, delay = 1000) => {
+  audioLoader.load(
+    url,
+    buffer => {
+      sound.name = key; // Assign name for reference in playSound
+      sound.setBuffer(buffer);
+      audioLoaded[key] = true;
+      if (key === 'bgm') {
+        sound.setLoop(true);
+        sound.setVolume(0.3);
+      }
+      console.log(`Loaded audio: ${url}`);
+    },
+    undefined,
+    error => {
+      console.error(`Failed to load audio ${url}:`, error);
+      if (retries > 0) {
+        console.log(`Retrying ${url} (${retries} attempts left)`);
+        setTimeout(() => loadAudioWithRetry(url, sound, key, retries - 1, delay * 2), delay);
+      } else {
+        // Fallback to a silent buffer to prevent errors
+        const silentBuffer = THREE.AudioContext.getContext().createBuffer(1, 1, 22050);
+        sound.setBuffer(silentBuffer);
+        audioLoaded[key] = true;
+        console.warn(`Using silent buffer for ${key} after retries failed`);
+      }
+    }
+  );
+};
+
+// Load all audio files
+Object.keys(audioFiles).forEach(key => {
+  loadAudioWithRetry(audioFiles[key], soundEffects[key], key);
 });
+
+// Set volumes (redundant but kept for consistency)
 soundEffects.explosion.setVolume(0.6);
 soundEffects.shoot.setVolume(0.3);
 soundEffects.hit.setVolume(0.4);
@@ -232,7 +291,7 @@ const setupMobileControls = () => {
   joystickZone.style.bottom = '20px';
   joystickZone.style.width = '120px';
   joystickZone.style.height = '120px';
-  joystickZone.style.zIndex = '10000'; // Increased z-index
+  joystickZone.style.zIndex = '10000';
   document.body.appendChild(joystickZone);
 
   // Create shoot button
@@ -246,7 +305,7 @@ const setupMobileControls = () => {
   shootButton.style.background = 'rgba(255, 0, 0, 0.5)';
   shootButton.style.borderRadius = '50%';
   shootButton.style.border = '2px solid #fff';
-  shootButton.style.zIndex = '10000'; // Increased z-index
+  shootButton.style.zIndex = '10000';
   document.body.appendChild(shootButton);
 
   // CSS for mobile controls
@@ -272,7 +331,7 @@ const setupMobileControls = () => {
   script.onload = () => {
     try {
       if (window.nipplejs) {
-        if (joystick) joystick.destroy(); // Destroy existing joystick instance
+        if (joystick) joystick.destroy();
         joystick = window.nipplejs.create({
           zone: joystickZone,
           mode: 'static',
@@ -283,7 +342,8 @@ const setupMobileControls = () => {
         });
 
         joystick.on('move', (evt, data) => {
-          touchControls.direction = data.vector; // { x: -1 to 1, y: -1 to 1 }
+          touchControls.direction = data.vector;
+          resumeAudioContext(); // Resume audio on joystick interaction
         });
 
         joystick.on('end', () => {
@@ -302,6 +362,7 @@ const setupMobileControls = () => {
   shootButton.addEventListener('touchstart', (e) => {
     e.preventDefault();
     touchControls.shoot = true;
+    resumeAudioContext(); // Resume audio on shoot button touch
   }, { passive: false });
   shootButton.addEventListener('touchend', (e) => {
     e.preventDefault();
@@ -351,7 +412,7 @@ const update = () => {
       particle.velocity.y -= 0.005;
       particle.life--;
       particle.mesh.material.opacity = particle.life / particle.maxLife;
-      const t = 1 - particle.life / particle.maxLife; // Define t for interpolation
+      const t = 1 - particle.life / particle.maxLife;
       if (particle.type === 'shockwave') {
         particle.mesh.scale.setScalar(particle.initialScale + t * (particle.targetScale - particle.initialScale));
       } else if (particle.type === 'debris' && particle.rotationSpeed) {
@@ -404,25 +465,24 @@ const update = () => {
 
     // Handle joystick input
     if (controls.direction && p.moveCooldown === 0) {
-      const { x, y } = controls.direction; // x: -1 (left) to 1 (right), y: -1 (down) to 1 (up)
-      const threshold = 0.3; // Sensitivity threshold
+      const { x, y } = controls.direction;
+      const threshold = 0.3;
       let newDir = p.dir;
 
-      // Determine primary direction based on joystick vector
       if (Math.abs(x) > Math.abs(y)) {
-        if (x > threshold) { newDir = 0; moved = moveTank(p, 1, 0, canMove, 0); } // Right
-        else if (x < -threshold) { newDir = 2; moved = moveTank(p, -1, 0, canMove, 2); } // Left
+        if (x > threshold) { newDir = 0; moved = moveTank(p, 1, 0, canMove, 0); }
+        else if (x < -threshold) { newDir = 2; moved = moveTank(p, -1, 0, canMove, 2); }
       } else {
-        if (y > threshold) { newDir = 3; moved = moveTank(p, 0, -1, canMove, 3); } // Up
-        else if (y < -threshold) { newDir = 1; moved = moveTank(p, 0, 1, canMove, 1); } // Down
+        if (y > threshold) { newDir = 3; moved = moveTank(p, 0, -1, canMove, 3); }
+        else if (y < -threshold) { newDir = 1; moved = moveTank(p, 0, 1, canMove, 1); }
       }
 
       if (moved) p.dir = newDir;
     }
 
     // Handle keyboard/gamepad input
-    if (controls.left && p.moveCooldown === 0) { p.dir = 2; moved = moveTank(p, -1, 0, canMove, 2); }
-    else if (controls.right && p.moveCooldown === 0) { p.dir = 0; moved = moveTank(p, 1, 0, canMove, 0); }
+    if (controls.left && p.moveCooldown === 0) { p.dir = 2; moved = moveTank(p, -1, 0, canMove, 0); }
+    else if (controls.right && p.moveCooldown === 0) { p.dir = 0; moved = moveTank(p, 1, 0, canMove, 2); }
     else if (controls.up && p.moveCooldown === 0) { p.dir = 3; moved = moveTank(p, 0, -1, canMove, 3); }
     else if (controls.down && p.moveCooldown === 0) { p.dir = 1; moved = moveTank(p, 0, 1, canMove, 1); }
 
@@ -434,6 +494,7 @@ const update = () => {
         bullet.range = 20;
         bullet.distanceTraveled = 0;
         bullets.push(bullet);
+        playSound(soundEffects.shoot, 0.3);
       }
     }
     p.healthRegen++;
@@ -486,6 +547,7 @@ const update = () => {
         bullet.range = 10;
         bullet.distanceTraveled = 0;
         bullets.push(bullet);
+        playSound(soundEffects.shoot, 0.3);
       }
     }
     if (enemy.hitEffect?.mesh) {
@@ -519,13 +581,13 @@ const update = () => {
           }
         } else {
           createSpark(bullet.mesh.position.x, bullet.mesh.position.y, bullet.mesh.position.z, scene, gameState);
-          soundEffects.hit.play();
+          playSound(soundEffects.hit, 0.4);
         }
       } else if (result.type === 'base') {
         base.health -= bullet.power;
         flashTimer = 10;
         createExplosion(base.mesh.position.x, base.mesh.position.y + 0.5, base.mesh.position.z, 1.5, scene, gameState, soundEffects);
-        soundEffects.baseHit.play();
+        playSound(soundEffects.baseHit, 0.6);
         if (base.health <= 0) gameOver();
       } else if (result.type === 'tank' && result.tank) {
         if (result.destroyed && !result.tank.isPlayer) {
@@ -540,7 +602,7 @@ const update = () => {
           }
         } else if (result.tank.isPlayer) {
           createSpark(bullet.mesh.position.x, bullet.mesh.position.y + 0.3, bullet.mesh.position.z, scene, gameState);
-          soundEffects.hit.play();
+          playSound(soundEffects.hit, 0.4);
           createExplosion(result.tank.mesh.position.x, result.tank.mesh.position.y + 0.5, result.tank.mesh.position.z, 2, scene, gameState, soundEffects);
           disposeTank(result.tank);
           result.tank.mesh = null;
@@ -569,6 +631,7 @@ const update = () => {
           });
           enemies = [];
           score.value += 1000;
+          playSound(soundEffects.powerUp, 0.4);
         } else if (pu.type === 'C') {
           enemies.forEach(e => {
             e.frozen = 300;
@@ -577,12 +640,12 @@ const update = () => {
             });
           });
           score.value += powerUpTypes[pu.type].score;
+          playSound(soundEffects.powerUp, 0.4);
         } else {
           applyPowerUp(p, pu.type, score, soundEffects);
         }
         powerUpUtils.dispose(pu);
         powerUps.splice(i, 1);
-        soundEffects.powerUp.play();
       }
     });
   });
@@ -664,7 +727,7 @@ const gameOver = () => {
   if (highScoreElement) highScoreElement.textContent = `High Score: ${highScore}`;
   const hud = document.getElementById('hud');
   if (hud) hud.style.display = 'none';
-  soundEffects.bgm.stop();
+  if (audioLoaded.bgm) soundEffects.bgm.stop();
 };
 
 const keys = {};
@@ -678,8 +741,11 @@ document.addEventListener('keydown', e => {
     const hud = document.getElementById('hud');
     if (pauseMenu) pauseMenu.style.display = gameState.paused ? 'block' : 'none';
     if (hud) hud.style.display = gameState.paused ? 'none' : 'block';
-    if (gameState.paused) soundEffects.bgm.pause();
-    else soundEffects.bgm.play();
+    if (gameState.paused && audioLoaded.bgm) {
+      soundEffects.bgm.pause();
+    } else if (audioLoaded.bgm) {
+      playSound(soundEffects.bgm, 0.3);
+    }
   }
 });
 
@@ -738,8 +804,8 @@ const resetGame = async () => {
   if (gameOverElement) gameOverElement.style.display = 'none';
   const menu = document.getElementById('menu');
   if (menu) menu.style.display = 'block';
-  soundEffects.bgm.play();
-  setupMobileControls(); // Re-initialize mobile controls after reset
+  if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
+  setupMobileControls();
 };
 
 const init = async () => {
@@ -759,7 +825,8 @@ const init = async () => {
       player2.shieldTime = 180;
     }
     gameState.running = true;
-    setupMobileControls(); // Initialize mobile controls after game setup
+    if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
+    setupMobileControls();
   } catch (error) {
     console.error('Failed to initialize game:', error);
     gameOver();
@@ -776,6 +843,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const quitButton = document.getElementById('quitButton');
 
   startButton?.addEventListener('click', () => {
+    resumeAudioContext();
     gameState.twoPlayer = false;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
@@ -783,6 +851,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   twoPlayerButton?.addEventListener('click', () => {
+    resumeAudioContext();
     gameState.twoPlayer = true;
     document.getElementById('menu').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
@@ -790,23 +859,33 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   helpButton?.addEventListener('click', () => {
+    resumeAudioContext();
     document.getElementById('helpModal').style.display = 'block';
   });
 
   helpButtonGameOver?.addEventListener('click', () => {
+    resumeAudioContext();
     document.getElementById('helpModal').style.display = 'block';
   });
 
   resumeButton?.addEventListener('click', () => {
+    resumeAudioContext();
     gameState.paused = false;
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
-    soundEffects.bgm.play();
-    setupMobileControls(); // Ensure controls are visible after resuming
+    if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
+    setupMobileControls();
   });
 
-  restartButton?.addEventListener('click', resetGame);
-  quitButton?.addEventListener('click', resetGame);
+  restartButton?.addEventListener('click', () => {
+    resumeAudioContext();
+    resetGame();
+  });
+
+  quitButton?.addEventListener('click', () => {
+    resumeAudioContext();
+    resetGame();
+  });
 });
 
 const animate = () => {

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
   <title>Tank City</title>
   <link href="https://fonts.cdnfonts.com/css/press-start-2p" rel="stylesheet">
   <style>
@@ -10,12 +10,13 @@
       margin: 0;
       overflow: hidden;
       background: #000;
-      touch-action: none;
+      touch-action: none; /* Prevent pinch-zoom */
     }
     canvas {
       display: block;
       width: 100vw;
       height: 100vh;
+      touch-action: none; /* Prevent pinch-zoom on canvas */
     }
     #hud {
       position: absolute;
@@ -187,8 +188,8 @@
   <div id="baseHealth"><div id="baseHealthBar"></div></div>
   <div id="menu">
     <h1>TANK CITY</h1>
-    <button id="startButton">START</button>
-    <button id="twoPlayerButton">2 PLAYER</button>
+    <button id="startButton" onclick="enterFullScreen()">START</button>
+    <button id="twoPlayerButton" onclick="enterFullScreen()">2 PLAYER</button>
     <button id="helpButton">HELP</button>
   </div>
   <div id="pauseMenu" style="display: none;">
@@ -236,12 +237,40 @@
   </div>
   <div id="flash"></div>
   <div id="touchControls">
-    <div id="touchLeft" class="touch-button">←</div>
-    <div id="touchRight" class="touch-button">→</div>
-    <div id="touchUp" class="touch-button">↑</div>
-    <div id="touchDown" class="touch-button">↓</div>
     <div id="touchShoot" class="touch-button">SHOOT</div>
   </div>
+  <script>
+    // Request full-screen mode
+    function enterFullScreen() {
+      const element = document.documentElement;
+      if (element.requestFullscreen) {
+        element.requestFullscreen();
+      } else if (element.webkitRequestFullscreen) { /* Safari */
+        element.webkitRequestFullscreen();
+      } else if (element.mozRequestFullScreen) { /* Firefox */
+        element.mozRequestFullScreen();
+      } else if (element.msRequestFullscreen) { /* IE/Edge */
+        element.msRequestFullscreen();
+      }
+    }
+
+    // Prevent double-tap zoom
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', (event) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        event.preventDefault();
+      }
+      lastTouchEnd = now;
+    }, { passive: false });
+
+   
+    document.addEventListener('touchstart', (event) => {
+      if (event.touches.length > 1) {
+        event.preventDefault();
+      }
+    }, { passive: false });
+  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
