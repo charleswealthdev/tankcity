@@ -3,7 +3,6 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { createTank, moveTank, shoot, updateEnemyAI, applyPowerUp, respawnPlayer, disposeTank, bulletPool, enemyTypes, powerUpTypes, createShield, createDamageIndicator, directions, createPowerUp, powerUpUtils } from './tank.js';
 import { createBrick, generateTerrain, createExplosion, createSpark, disposeBrick, particlePool } from './brick.js';
 
-// Scene setup
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x2a2a2a, 10, 100);
 const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -16,14 +15,12 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
-// Handle window resize
 window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 });
 
-// Load HDRI environment
 const rgbeLoader = new RGBELoader();
 rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
   texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -58,7 +55,6 @@ floor.position.y = -0.1;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// Audio setup
 const listener = new THREE.AudioListener();
 camera.add(listener);
 const audioLoader = new THREE.AudioLoader();
@@ -87,8 +83,8 @@ const audioLoaded = {
   bgm: false
 };
 
-// Function to safely play a sound
 const playSound = (sound, volume = null) => {
+  if (gameState.paused) return;
   if (sound && audioLoaded[sound.name] && sound.buffer && !sound.isPlaying) {
     if (volume !== null) sound.setVolume(volume);
     try {
@@ -99,7 +95,12 @@ const playSound = (sound, volume = null) => {
   }
 };
 
-// Resume audio context on user interaction
+const pauseAllSounds = () => {
+  Object.values(soundEffects).forEach(sound => {
+    if (sound.isPlaying) sound.pause();
+  });
+};
+
 const resumeAudioContext = () => {
   if (THREE.AudioContext.getContext().state === 'suspended') {
     THREE.AudioContext.getContext().resume().then(() => {
@@ -111,12 +112,11 @@ const resumeAudioContext = () => {
   }
 };
 
-// Load audio files with retry mechanism
 const loadAudioWithRetry = (url, sound, key, retries = 3, delay = 1000) => {
   audioLoader.load(
     url,
     buffer => {
-      sound.name = key; // Assign name for reference in playSound
+      sound.name = key;
       sound.setBuffer(buffer);
       audioLoaded[key] = true;
       if (key === 'bgm') {
@@ -132,7 +132,6 @@ const loadAudioWithRetry = (url, sound, key, retries = 3, delay = 1000) => {
         console.log(`Retrying ${url} (${retries} attempts left)`);
         setTimeout(() => loadAudioWithRetry(url, sound, key, retries - 1, delay * 2), delay);
       } else {
-        // Fallback to a silent buffer to prevent errors
         const silentBuffer = THREE.AudioContext.getContext().createBuffer(1, 1, 22050);
         sound.setBuffer(silentBuffer);
         audioLoaded[key] = true;
@@ -142,24 +141,20 @@ const loadAudioWithRetry = (url, sound, key, retries = 3, delay = 1000) => {
   );
 };
 
-// Load all audio files
 Object.keys(audioFiles).forEach(key => {
   loadAudioWithRetry(audioFiles[key], soundEffects[key], key);
 });
 
-// Set volumes (redundant but kept for consistency)
 soundEffects.explosion.setVolume(0.6);
 soundEffects.shoot.setVolume(0.3);
 soundEffects.hit.setVolume(0.4);
 soundEffects.powerUp.setVolume(0.4);
 soundEffects.baseHit.setVolume(0.6);
 
-// Game grid and terrain
 const tileSize = 1;
 const gridWidth = 61;
 const gridHeight = 61;
 
-// Lighting
 const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
 directionalLight.position.set(45, 75, 45);
@@ -171,7 +166,6 @@ directionalLight.shadow.camera.top = 90;
 directionalLight.shadow.camera.bottom = -90;
 scene.add(ambientLight, directionalLight);
 
-// Brick textures
 const brickTextures = {
   basecolor: textureLoader.load('/Bricks080C_1K-JPG/Bricks080C_1K-JPG_Color.jpg', undefined, undefined, (error) => console.error('Failed to load brick basecolor:', error)) || fallbackTexture,
   roughness: textureLoader.load('/Bricks080C_1K-JPG/Bricks080C_1K-JPG_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load brick roughness:', error)) || fallbackTexture,
@@ -196,7 +190,6 @@ const materials = {
   4: new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0x331100, metalness: 0.3, roughness: 0.7 })
 };
 
-// Generate terrain
 const terrain = generateTerrain(gridWidth, gridHeight);
 const brickHealth = Array(gridHeight).fill().map(() => Array(gridWidth).fill(0));
 terrain.forEach((row, y) => row.forEach((type, x) => { if (type === 1) brickHealth[y][x] = 2; }));
@@ -213,12 +206,12 @@ terrain.forEach((row, y) => {
 });
 scene.add(terrainGroup);
 
-// Game state
 let gameState = {
   running: false,
   over: false,
   twoPlayer: false,
   paused: false,
+  autoPaused: false,
   wave: 1,
   waveTimer: 0,
   cameraShake: 0,
@@ -233,7 +226,7 @@ let player = {
   bulletPower: 1, maxBullets: 1, currentBullets: 0, rapidFire: false,
   shield: null, lastX: 20, lastY: 59, damageIndicator: null,
   healthRegen: 0, respawnTimer: 0, isPlayer: true, isPlayer1: true,
-  scene, gridWidth, gridHeight, directions, soundEffects
+  scene, gridWidth, gridHeight, directions, soundEffects, shootCooldown: 0
 };
 
 let player2 = {
@@ -242,7 +235,7 @@ let player2 = {
   bulletPower: 1, maxBullets: 1, currentBullets: 0, rapidFire: false,
   shield: null, lastX: 40, lastY: 59, damageIndicator: null,
   healthRegen: 0, respawnTimer: 0, isPlayer: true, isPlayer1: false,
-  scene, gridWidth, gridHeight, directions, soundEffects
+  scene, gridWidth, gridHeight, directions, soundEffects, shootCooldown: 0
 };
 
 let base = { x: 30, y: 59, mesh: null, health: 3, maxHealth: 3 };
@@ -270,12 +263,10 @@ const canMove = (x, y, excludeEntity = null) => {
   return !entities.some(entity => entity !== excludeEntity && entity.mesh && entity.mesh.parent && entity.x === x && entity.y === y);
 };
 
-// Mobile controls (joystick and shoot button)
 let joystick, shootButton;
 const touchControls = { direction: null, shoot: false };
 
 const setupMobileControls = () => {
-  // Remove existing controls to prevent duplicates
   let joystickZone = document.getElementById('joystickZone');
   if (joystickZone) joystickZone.remove();
   let existingShootButton = document.getElementById('shootButton');
@@ -283,7 +274,6 @@ const setupMobileControls = () => {
   let existingStyle = document.getElementById('mobileControlsStyle');
   if (existingStyle) existingStyle.remove();
 
-  // Create joystick container
   joystickZone = document.createElement('div');
   joystickZone.id = 'joystickZone';
   joystickZone.style.position = 'fixed';
@@ -294,7 +284,6 @@ const setupMobileControls = () => {
   joystickZone.style.zIndex = '10000';
   document.body.appendChild(joystickZone);
 
-  // Create shoot button
   shootButton = document.createElement('div');
   shootButton.id = 'shootButton';
   shootButton.style.position = 'fixed';
@@ -308,14 +297,13 @@ const setupMobileControls = () => {
   shootButton.style.zIndex = '10000';
   document.body.appendChild(shootButton);
 
-  // CSS for mobile controls
   const style = document.createElement('style');
   style.id = 'mobileControlsStyle';
   style.textContent = `
     #joystickZone, #shootButton {
       display: none !important;
     }
-    @media (max-width: 768px) {
+    @media (max-width: 1024px), (orientation: landscape) {
       #joystickZone, #shootButton {
         display: block !important;
         visibility: visible !important;
@@ -324,7 +312,6 @@ const setupMobileControls = () => {
   `;
   document.head.appendChild(style);
 
-  // Load nipplejs dynamically
   const script = document.createElement('script');
   script.src = 'https://cdn.jsdelivr.net/npm/nipplejs@0.10.0/dist/nipplejs.min.js';
   script.onerror = () => console.error('Failed to load nipplejs');
@@ -343,7 +330,7 @@ const setupMobileControls = () => {
 
         joystick.on('move', (evt, data) => {
           touchControls.direction = data.vector;
-          resumeAudioContext(); // Resume audio on joystick interaction
+          resumeAudioContext();
         });
 
         joystick.on('end', () => {
@@ -358,17 +345,56 @@ const setupMobileControls = () => {
   };
   document.head.appendChild(script);
 
-  // Shoot button events
   shootButton.addEventListener('touchstart', (e) => {
     e.preventDefault();
     touchControls.shoot = true;
-    resumeAudioContext(); // Resume audio on shoot button touch
+    resumeAudioContext();
   }, { passive: false });
   shootButton.addEventListener('touchend', (e) => {
     e.preventDefault();
     touchControls.shoot = false;
   }, { passive: false });
 };
+
+const togglePause = () => {
+  if (!gameState.running || gameState.over) return;
+  gameState.paused = !gameState.paused;
+  const pauseMenu = document.getElementById('pauseMenu');
+  const hud = document.getElementById('hud');
+  const pauseButton = document.getElementById('pauseButton');
+  if (pauseMenu) pauseMenu.style.display = gameState.paused ? 'block' : 'none';
+  if (hud) hud.style.display = gameState.paused ? 'none' : 'block';
+  if (pauseButton) pauseButton.style.display = gameState.paused ? 'none' : 'block';
+  if (gameState.paused) {
+    pauseAllSounds();
+  } else if (audioLoaded.bgm) {
+    playSound(soundEffects.bgm, 0.3);
+  }
+};
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && gameState.running && !gameState.paused && !gameState.over) {
+    gameState.paused = true;
+    gameState.autoPaused = true;
+    const pauseMenu = document.getElementById('pauseMenu');
+    const hud = document.getElementById('hud');
+    const pauseButton = document.getElementById('pauseButton');
+    if (pauseMenu) pauseMenu.style.display = 'block';
+    if (hud) hud.style.display = 'none';
+    if (pauseButton) pauseButton.style.display = 'none';
+    pauseAllSounds();
+  } else if (document.visibilityState === 'visible' && gameState.paused && gameState.autoPaused) {
+    gameState.paused = false;
+    gameState.autoPaused = false;
+    const pauseMenu = document.getElementById('pauseMenu');
+    const hud = document.getElementById('hud');
+    const pauseButton = document.getElementById('pauseButton');
+    if (pauseMenu) pauseMenu.style.display = 'none';
+    if (hud) hud.style.display = 'block';
+    if (pauseButton) pauseButton.style.display = 'block';
+    if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
+  }
+});
 
 const spawnEnemy = async () => {
   const config = levelConfig[Math.min(level, 5)];
@@ -430,6 +456,7 @@ const update = () => {
   [player, ...(gameState.twoPlayer ? [player2] : [])].forEach(p => {
     if (p.moveCooldown > 0) p.moveCooldown--;
     if (p.respawnTimer > 0) p.respawnTimer--;
+    if (p.shootCooldown > 0) p.shootCooldown--;
     if (p.shieldTime > 0) {
       p.shieldTime--;
       if (p.shield?.mesh) {
@@ -463,7 +490,6 @@ const update = () => {
     if (p.respawnTimer > 0 || !p.mesh?.parent) return;
     let moved = false;
 
-    // Handle joystick input
     if (controls.direction && p.moveCooldown === 0) {
       const { x, y } = controls.direction;
       const threshold = 0.3;
@@ -480,7 +506,6 @@ const update = () => {
       if (moved) p.dir = newDir;
     }
 
-    // Handle keyboard/gamepad input
     if (controls.left && p.moveCooldown === 0) { p.dir = 2; moved = moveTank(p, -1, 0, canMove, 0); }
     else if (controls.right && p.moveCooldown === 0) { p.dir = 0; moved = moveTank(p, 1, 0, canMove, 2); }
     else if (controls.up && p.moveCooldown === 0) { p.dir = 3; moved = moveTank(p, 0, -1, canMove, 3); }
@@ -488,13 +513,14 @@ const update = () => {
 
     if (moved) p.mesh.rotation.y = p.dir * Math.PI / 2;
 
-    if (controls.shoot && p.canShoot) {
+    if (controls.shoot && p.canShoot && p.shootCooldown === 0) {
       const bullet = shoot(p, true, scene, gridWidth, gridHeight, soundEffects);
       if (bullet) {
         bullet.range = 20;
         bullet.distanceTraveled = 0;
         bullets.push(bullet);
         playSound(soundEffects.shoot, 0.3);
+        p.shootCooldown = p.rapidFire ? 15 : 60;
       }
     }
     p.healthRegen++;
@@ -727,6 +753,8 @@ const gameOver = () => {
   if (highScoreElement) highScoreElement.textContent = `High Score: ${highScore}`;
   const hud = document.getElementById('hud');
   if (hud) hud.style.display = 'none';
+  const pauseButton = document.getElementById('pauseButton');
+  if (pauseButton) pauseButton.style.display = 'none';
   if (audioLoaded.bgm) soundEffects.bgm.stop();
 };
 
@@ -736,16 +764,7 @@ document.addEventListener('keydown', keyHandler);
 document.addEventListener('keyup', keyHandler);
 document.addEventListener('keydown', e => {
   if (e.code === 'Escape' && gameState.running && !gameState.over) {
-    gameState.paused = !gameState.paused;
-    const pauseMenu = document.getElementById('pauseMenu');
-    const hud = document.getElementById('hud');
-    if (pauseMenu) pauseMenu.style.display = gameState.paused ? 'block' : 'none';
-    if (hud) hud.style.display = gameState.paused ? 'none' : 'block';
-    if (gameState.paused && audioLoaded.bgm) {
-      soundEffects.bgm.pause();
-    } else if (audioLoaded.bgm) {
-      playSound(soundEffects.bgm, 0.3);
-    }
+    togglePause();
   }
 });
 
@@ -753,6 +772,7 @@ const resetGame = async () => {
   gameState.running = false;
   gameState.over = false;
   gameState.paused = false;
+  gameState.autoPaused = false;
   [player, player2, base].concat(enemies, bullets, powerUps).forEach(entity => {
     if (entity.mesh) disposeTank(entity);
     if (entity.mesh?.baseGeometry) powerUpUtils.dispose(entity);
@@ -774,7 +794,7 @@ const resetGame = async () => {
     bulletPower: 1, maxBullets: 1, currentBullets: 0, rapidFire: false,
     shield: null, lastX: 20, lastY: 59, damageIndicator: null,
     healthRegen: 0, respawnTimer: 0, isPlayer: true, isPlayer1: true,
-    scene, gridWidth, gridHeight, directions, soundEffects
+    scene, gridWidth, gridHeight, directions, soundEffects, shootCooldown: 0
   };
   player2 = {
     x: 40, y: 59, dir: 3, lives: 3, invincible: false, shieldTime: 0,
@@ -782,7 +802,7 @@ const resetGame = async () => {
     bulletPower: 1, maxBullets: 1, currentBullets: 0, rapidFire: false,
     shield: null, lastX: 40, lastY: 59, damageIndicator: null,
     healthRegen: 0, respawnTimer: 0, isPlayer: true, isPlayer1: false,
-    scene, gridWidth, gridHeight, directions, soundEffects
+    scene, gridWidth, gridHeight, directions, soundEffects, shootCooldown: 0
   };
   base = { x: 30, y: 59, mesh: null, health: 3, maxHealth: 3 };
   terrainGroup.children = [];
@@ -804,6 +824,8 @@ const resetGame = async () => {
   if (gameOverElement) gameOverElement.style.display = 'none';
   const menu = document.getElementById('menu');
   if (menu) menu.style.display = 'block';
+  const pauseButton = document.getElementById('pauseButton');
+  if (pauseButton) pauseButton.style.display = 'none';
   if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
   setupMobileControls();
 };
@@ -825,6 +847,8 @@ const init = async () => {
       player2.shieldTime = 180;
     }
     gameState.running = true;
+    const pauseButton = document.getElementById('pauseButton');
+    if (pauseButton) pauseButton.style.display = 'block';
     if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
     setupMobileControls();
   } catch (error) {
@@ -841,6 +865,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const resumeButton = document.getElementById('resumeButton');
   const restartButton = document.getElementById('restartButton');
   const quitButton = document.getElementById('quitButton');
+  const pauseButton = document.getElementById('pauseButton');
 
   startButton?.addEventListener('click', () => {
     resumeAudioContext();
@@ -871,8 +896,10 @@ document.addEventListener('DOMContentLoaded', () => {
   resumeButton?.addEventListener('click', () => {
     resumeAudioContext();
     gameState.paused = false;
+    gameState.autoPaused = false;
     document.getElementById('pauseMenu').style.display = 'none';
     document.getElementById('hud').style.display = 'block';
+    document.getElementById('pauseButton').style.display = 'block';
     if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
     setupMobileControls();
   });
@@ -885,6 +912,11 @@ document.addEventListener('DOMContentLoaded', () => {
   quitButton?.addEventListener('click', () => {
     resumeAudioContext();
     resetGame();
+  });
+
+  pauseButton?.addEventListener('click', () => {
+    resumeAudioContext();
+    togglePause();
   });
 });
 
