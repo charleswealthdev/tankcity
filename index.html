@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
   <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
-<link rel="manifest" href="/favicon_io/site.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon_io/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png">
+  <link rel="manifest" href="/favicon_io/site.webmanifest">
   <title>Tank City</title>
   <link href="https://fonts.cdnfonts.com/css/press-start-2p" rel="stylesheet">
   <style>
@@ -141,8 +141,34 @@
     #joystickZone, #shootButton {
       display: none;
     }
+    #shootButton {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 80px;
+      height: 80px;
+      background: rgba(255, 0, 0, 0.5);
+      border-radius: 50%;
+      border: 2px solid #fff;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #shootCooldownCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
     @media (max-width: 1024px), (orientation: landscape) {
       #joystickZone, #shootButton {
+        display: block;
+      }
+      #shootCooldownCanvas {
         display: block;
       }
       #hud {
@@ -216,38 +242,47 @@
     <button id="helpButtonGameOver">HELP</button>
   </div>
   <div id="helpModal" style="display: none;">
-    <h2>HELP - CONTROLS & OBJECTIVES</h2>
+    <h1>HOW TO PLAY</h1>
     <h3>Controls (Player 1):</h3>
     <ul>
-      <li>Move: Arrow Keys (WASD) or Touch Joystick (Mobile)</li>
-      <li>Shoot: Space or Shoot Button (Mobile)</li>
+      <li>Move: Arrow Keys or WASD (Keyboard), Joystick (Mobile)</li>
+      <li>Shoot: Space (Keyboard), Shoot Button (Mobile)</li>
+      <li>Shoot Cooldown: Wait for the white ring on the shoot button to disappear (1 second normally, faster with Rapid Fire)</li>
     </ul>
     <h3>Controls (Player 2):</h3>
     <ul>
-      <li>Move: I, J, K, L</li>
+      <li>Move: I (Up), J (Left), K (Down), L (Right)</li>
       <li>Shoot: U</li>
     </ul>
-    <h3>Objectives:</h3>
+    <h3>Goals:</h3>
     <ul>
       <li>Protect the base (eagle) from enemy tanks.</li>
-      <li>Destroy 20 enemy tanks per stage to advance.</li>
-      <li>Collect power-ups for bonuses.</li>
+      <li>Destroy 20 enemy tanks to move to the next stage.</li>
+      <li>Grab power-ups for bonuses.</li>
     </ul>
     <h3>Power-Ups:</h3>
     <ul>
-      <li>Health (Red): +1 Life (up to 5)</li>
+      <li>Health (Red): Adds 1 life</li>
       <li>Bomb (Green): Destroys all enemies</li>
-      <li>Clock (Blue): Freezes enemies for 5 seconds</li>
-      <li>Shield (Yellow): Invincibility for 10 seconds</li>
-      <li>Rapid Fire (Pink): Faster firing for 10 seconds</li>
-      <li>Power (Cyan): Stronger bullets for 8 seconds</li>
-      <li>Life (White): +1 Extra Life</li>
-      <li>Cooldown (Purple): Reduces movement cooldown</li>
+      <li>Clock (Blue): Freezes enemies</li>
+      <li>Shield (Yellow): Makes you invincible</li>
+      <li>Rapid Fire (Pink): Shoot faster</li>
+      <li>Power (Cyan): Stronger bullets</li>
+      <li>Life (White): Adds 1 life</li>
+      <li>Cooldown (Purple): Move faster</li>
+    </ul>
+    <h3>Install Game</h3>
+    <ul>
+      <li>Tap on your chrome browser to add to your home screen and install.</li>
     </ul>
     <button onclick="document.getElementById('helpModal').style.display = 'none'">CLOSE</button>
   </div>
   <div id="flash"></div>
   <button id="pauseButton">PAUSE</button>
+  <div id="joystickZone"></div>
+  <div id="shootButton">
+    <canvas id="shootCooldownCanvas" width="80" height="80"></canvas>
+  </div>
   <script>
     function enterFullScreen() {
       const element = document.documentElement;

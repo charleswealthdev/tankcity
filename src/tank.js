@@ -29,9 +29,9 @@ const bulletPool = {
     if (this.pool.length > 0) {
       bullet = this.pool.pop();
       bullet.mesh.visible = true;
-      bullet.mesh.scale.set(Math.max(0.75, power * 0.75), Math.max(0.75, power * 0.75), Math.max(0.75, power * 0.75));
+      bullet.mesh.scale.set(Math.max(1, power * 1), Math.max(1, power * 1), Math.max(1, power * 1));
     } else {
-      const bulletRadius = 0.05 * Math.max(0.75, power);
+      const bulletRadius = 0.1 * Math.max(0.75, power);
       const geometry = new THREE.SphereGeometry(bulletRadius, 10, 10);
       const material = new THREE.MeshStandardMaterial({
         color: colors.bullet,

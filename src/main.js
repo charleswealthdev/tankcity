@@ -33,7 +33,7 @@ const fallbackTexture = new THREE.TextureLoader().load('data:image/png;base64,iV
 
 const groundTextures = {
   basecolor: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_BaseColor.jpg', undefined, undefined, (error) => console.error('Failed to load ground basecolor:', error)) || fallbackTexture,
-  roughness: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
+  roughness: textureLoader.load('/Poliigon_Stone quartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
   normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.png', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture
 };
 Object.values(groundTextures).forEach(tex => {
@@ -266,6 +266,45 @@ const canMove = (x, y, excludeEntity = null) => {
 let joystick, shootButton;
 const touchControls = { direction: null, shoot: false };
 
+let shootCooldownCanvas, shootCooldownCtx;
+
+const setupShootCooldownCanvas = () => {
+  shootCooldownCanvas = document.getElementById('shootCooldownCanvas');
+  if (!shootCooldownCanvas) return;
+  shootCooldownCtx = shootCooldownCanvas.getContext('2d');
+  shootCooldownCanvas.width = 80;
+  shootCooldownCanvas.height = 80;
+
+  window.addEventListener('resize', () => {
+    const shootButton = document.getElementById('shootButton');
+    if (shootButton) {
+      const size = shootButton.offsetWidth;
+      shootCooldownCanvas.width = size;
+      shootCooldownCanvas.height = size;
+    }
+  });
+};
+
+const drawShootCooldown = (cooldown, maxCooldown) => {
+  if (!shootCooldownCtx || !shootCooldownCanvas) return;
+  const ctx = shootCooldownCtx;
+  const canvas = shootCooldownCanvas;
+  const size = canvas.width;
+  const center = size / 2;
+  const radius = size / 2 - 4;
+  const progress = cooldown / maxCooldown;
+
+  ctx.clearRect(0, 0, size, size);
+
+  if (cooldown <= 0) return;
+
+  ctx.beginPath();
+  ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * (1 - progress));
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+};
+
 const setupMobileControls = () => {
   let joystickZone = document.getElementById('joystickZone');
   if (joystickZone) joystickZone.remove();
@@ -295,6 +334,15 @@ const setupMobileControls = () => {
   shootButton.style.borderRadius = '50%';
   shootButton.style.border = '2px solid #fff';
   shootButton.style.zIndex = '10000';
+  shootButton.style.display = 'flex';
+  shootButton.style.alignItems = 'center';
+  shootButton.style.justifyContent = 'center';
+  shootButton.style.overflow = 'hidden';
+  const canvas = document.createElement('canvas');
+  canvas.id = 'shootCooldownCanvas';
+  canvas.width = 80;
+  canvas.height = 80;
+  shootButton.appendChild(canvas);
   document.body.appendChild(shootButton);
 
   const style = document.createElement('style');
@@ -303,10 +351,21 @@ const setupMobileControls = () => {
     #joystickZone, #shootButton {
       display: none !important;
     }
+    #shootCooldownCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
     @media (max-width: 1024px), (orientation: landscape) {
       #joystickZone, #shootButton {
         display: block !important;
         visibility: visible !important;
+      }
+      #shootCooldownCanvas {
+        display: block !important;
       }
     }
   `;
@@ -354,6 +413,8 @@ const setupMobileControls = () => {
     e.preventDefault();
     touchControls.shoot = false;
   }, { passive: false });
+
+  setupShootCooldownCanvas();
 };
 
 const togglePause = () => {
@@ -521,12 +582,21 @@ const update = () => {
         bullets.push(bullet);
         playSound(soundEffects.shoot, 0.3);
         p.shootCooldown = p.rapidFire ? 15 : 60;
+        if (p.isPlayer1) {
+          drawShootCooldown(p.shootCooldown, p.rapidFire ? 15 : 60);
+        }
       }
     }
     p.healthRegen++;
     if (p.healthRegen > 300 && p.lives < 5) {
       p.lives++;
       p.healthRegen = 0;
+    }
+
+    if (p.isPlayer1 && p.shootCooldown > 0) {
+      drawShootCooldown(p.shootCooldown, p.rapidFire ? 15 : 60);
+    } else if (p.isPlayer1 && p.shootCooldown === 0) {
+      drawShootCooldown(0, p.rapidFire ? 15 : 60);
     }
   };
 
