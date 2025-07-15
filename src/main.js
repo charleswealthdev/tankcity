@@ -25,7 +25,6 @@ const rgbeLoader = new RGBELoader();
 rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
   texture.mapping = THREE.EquirectangularReflectionMapping;
   scene.environment = texture;
-  scene.background = texture;
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
 const textureLoader = new THREE.TextureLoader();
@@ -33,7 +32,7 @@ const fallbackTexture = new THREE.TextureLoader().load('data:image/png;base64,iV
 
 const groundTextures = {
   basecolor: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_BaseColor.jpg', undefined, undefined, (error) => console.error('Failed to load ground basecolor:', error)) || fallbackTexture,
-  roughness: textureLoader.load('/Poliigon_Stone quartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
+  roughness: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
   normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.png', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture
 };
 Object.values(groundTextures).forEach(tex => {
@@ -217,7 +216,8 @@ let gameState = {
   cameraShake: 0,
   particles: [],
   levelProgress: 0,
-  killStreak: 0
+  killStreak: 0,
+  lastGameplayEvent: 0 // Added for periodic gameplay event tracking
 };
 
 let player = {
@@ -486,6 +486,16 @@ const spawnEnemy = async () => {
 const update = () => {
   if (!gameState.running || gameState.paused) return;
 
+  // Periodic gameplay event (every 60 seconds)
+  const now = Date.now();
+  if (now - gameState.lastGameplayEvent >= 60000) {
+    window.gtag('event', 'gameplay_active', {
+      'event_category': 'Game',
+      'event_label': 'Active Gameplay'
+    });
+    gameState.lastGameplayEvent = now;
+  }
+
   if (flashTimer > 0) {
     flashTimer--;
     const flash = document.getElementById('flash');
@@ -557,8 +567,8 @@ const update = () => {
       let newDir = p.dir;
 
       if (Math.abs(x) > Math.abs(y)) {
-        if (x > threshold) { newDir = 0; moved = moveTank(p, 1, 0, canMove, 0); }
-        else if (x < -threshold) { newDir = 2; moved = moveTank(p, -1, 0, canMove, 2); }
+        if (x > threshold) { newDir = 2; moved = moveTank(p, 1, 0, canMove, 0); }
+        else if (x < -threshold) { newDir = 0; moved = moveTank(p, -1, 0, canMove, 2); }
       } else {
         if (y > threshold) { newDir = 3; moved = moveTank(p, 0, -1, canMove, 3); }
         else if (y < -threshold) { newDir = 1; moved = moveTank(p, 0, 1, canMove, 1); }
@@ -811,6 +821,17 @@ const update = () => {
 const gameOver = () => {
   gameState.running = false;
   gameState.over = true;
+  // Track game_end event
+  window.gtag('event', 'game_end', {
+    'event_category': 'Game',
+    'event_label': 'Game Over'
+  });
+  // Track score_submitted event
+  window.gtag('event', 'score_submitted', {
+    'event_category': 'Game',
+    'event_label': 'Score',
+    'value': score.value
+  });
   if (score.value > highScore) {
     highScore = score.value;
     localStorage.setItem('highScore', highScore);
@@ -856,6 +877,7 @@ const resetGame = async () => {
   gameState.wave = 1;
   gameState.waveTimer = 0;
   gameState.killStreak = 0;
+  gameState.lastGameplayEvent = 0; // Reset gameplay event timer
   level = 1;
   score.value = 0;
   player = {
@@ -917,6 +939,7 @@ const init = async () => {
       player2.shieldTime = 180;
     }
     gameState.running = true;
+    gameState.lastGameplayEvent = Date.now(); // Initialize gameplay event timer
     const pauseButton = document.getElementById('pauseButton');
     if (pauseButton) pauseButton.style.display = 'block';
     if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
