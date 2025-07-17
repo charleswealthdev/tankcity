@@ -11,7 +11,7 @@ const colors = {
   bulletTrail: 0xffffff
 };
 
-const directions = [[-1, 0], [0, 1], [1, 0], [0, -1]]; // Right, Down, Left, Up
+const directions = [[-1, 0], [0, 1], [1, 0], [0, -1]];
 
 const modelCache = {
   player: null,
@@ -22,7 +22,7 @@ const modelCache = {
 
 const bulletPool = {
   pool: [],
-  maxSize: 100, // Increased to avoid pool exhaustion
+  maxSize: 500,
 
   create(power = 1, isPlayer = false) {
     let bullet;
@@ -32,32 +32,57 @@ const bulletPool = {
       bullet.mesh.scale.set(Math.max(1, power), Math.max(1, power), Math.max(1, power));
       bullet.isActive = true;
     } else {
-      const bulletRadius = 0.1 * Math.max(0.75, power);
-      const geometry = new THREE.SphereGeometry(bulletRadius, 10, 10);
-      const material = new THREE.MeshStandardMaterial({
-        color: colors.bullet,
-        emissive: 0x444400,
-        metalness: 0.7,
-        roughness: 0.2,
-        transparent: true,
-        opacity: 0.9
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.castShadow = true;
-      bullet = {
-        mesh,
-        geometry,
-        material,
-        isActive: true
-      };
+      if (this.pool.length >= this.maxSize) {
+        console.warn(`Bullet pool exhausted: maxSize=${this.maxSize}`);
+        const bulletRadius = 0.1 * Math.max(0.75, power);
+        const geometry = new THREE.SphereGeometry(bulletRadius, 10, 10);
+        const material = new THREE.MeshStandardMaterial({
+          color: colors.bullet,
+          emissive: 0x444400,
+          metalness: 0.7,
+          roughness: 0.2,
+          transparent: true,
+          opacity: 0.9
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        bullet = {
+          mesh,
+          geometry,
+          material,
+          isActive: true
+        };
+      } else {
+        const bulletRadius = 0.1 * Math.max(0.75, power);
+        const geometry = new THREE.SphereGeometry(bulletRadius, 10, 10);
+        const material = new THREE.MeshStandardMaterial({
+          color: colors.bullet,
+          emissive: 0x444400,
+          metalness: 0.7,
+          roughness: 0.2,
+          transparent: true,
+          opacity: 0.9
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        bullet = {
+          mesh,
+          geometry,
+          material,
+          isActive: true
+        };
+      }
     }
     bullet.range = isPlayer ? 20 : 10;
-    console.log(`Bullet created, pool size: ${this.pool.length}, isPlayer: ${isPlayer}`);
+    console.log(`Bullet created: poolSize=${this.pool.length}, isPlayer=${isPlayer}`);
     return bullet;
   },
 
   release(bullet) {
-    if (!bullet || !bullet.mesh) return;
+    if (!bullet || !bullet.mesh) {
+      console.warn('Attempting to release invalid bullet');
+      return;
+    }
     bullet.isActive = false;
     bullet.mesh.visible = false;
     if (bullet.mesh.parent) {
@@ -69,7 +94,7 @@ const bulletPool = {
       if (bullet.geometry) bullet.geometry.dispose();
       if (bullet.material) bullet.material.dispose();
     }
-    console.log(`Bullet released, pool size: ${this.pool.length}`);
+    console.log(`Bullet released: poolSize=${this.pool.length}`);
   },
 
   dispose() {
@@ -84,7 +109,8 @@ const bulletPool = {
 
   updateBullet(bullet, scene, tanks, terrainGrid, gridWidth, gridHeight, soundEffects, score, gameState) {
     if (!bullet?.isActive || !bullet.mesh?.parent) {
-      this.release(bullet);
+      console.log('Bullet update skipped: inactive or not in scene');
+      this.destroyBullet(bullet, scene);
       return { hit: false };
     }
 
@@ -102,6 +128,7 @@ const bulletPool = {
     );
 
     if (bullet.distanceTraveled > (bullet.range || 20) || bullet.x < 0 || bullet.x >= gridWidth || bullet.y < 0 || bullet.y >= gridHeight) {
+      console.log(`Bullet destroyed: range=${bullet.distanceTraveled}, bounds=[${bullet.x},${bullet.y}]`);
       this.destroyBullet(bullet, scene);
       return { hit: true, type: 'boundary' };
     }
@@ -111,12 +138,13 @@ const bulletPool = {
 
     if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight && terrainGrid?.[gridY]?.[gridX] !== 0) {
       const terrain = terrainGrid[gridY][gridX];
-      if (terrain === 1 || terrain === 2) {
-        if (terrain === 1 || (terrain === 2 && bullet.power >= 2)) {
-          this.destroyBullet(bullet, scene);
-          return { hit: true, type: 'terrain', x: gridX, y: gridY };
-        }
+      if (terrain === 1 || (terrain === 2 && bullet.power >= 2)) {
+        console.log(`Bullet hit terrain at [${gridY}][${gridX}], type=${terrain}`);
+        terrainGrid[gridY][gridX] = 0;
+        this.destroyBullet(bullet, scene);
+        return { hit: true, type: 'terrain', x: gridX, y: gridY };
       } else if (terrain === 4) {
+        console.log('Bullet hit base');
         this.destroyBullet(bullet, scene);
         return { hit: true, type: 'base', x: gridX, y: gridY };
       }
@@ -132,6 +160,7 @@ const bulletPool = {
       const hitRadius = tank.isPlayer ? 0.6 : 0.5;
 
       if (distance < hitRadius) {
+        console.log(`Bullet hit tank: ${tank.isPlayer ? 'player' : 'enemy'}`);
         const hitResult = handleTankHit(tank, bullet, score, soundEffects, scene, gameState);
         this.destroyBullet(bullet, scene);
         return { hit: true, type: 'tank', tank, ...hitResult };
@@ -139,6 +168,7 @@ const bulletPool = {
     }
 
     if (bullet.lifeTime > bullet.maxLifeTime) {
+      console.log('Bullet destroyed: lifetime exceeded');
       this.destroyBullet(bullet, scene);
       return { hit: true, type: 'timeout' };
     }
@@ -147,14 +177,19 @@ const bulletPool = {
   },
 
   destroyBullet(bullet, scene) {
-    if (!bullet || !bullet.mesh) return;
+    if (!bullet || !bullet.mesh) {
+      console.warn('Attempting to destroy invalid bullet');
+      return;
+    }
     if (bullet.mesh.parent) {
       scene.remove(bullet.mesh);
     }
     if (bullet.owner) {
       bullet.owner.currentBullets = Math.max(0, (bullet.owner.currentBullets || 0) - 1);
-      console.log(`Bullet destroyed, owner: ${bullet.owner.isPlayer ? 'player' : 'enemy'}, currentBullets: ${bullet.owner.currentBullets}, pool size: ${this.pool.length}`);
+      console.log(`Bullet destroyed: owner=${bullet.owner.isPlayer ? 'player' : 'enemy'}, currentBullets=${bullet.owner.currentBullets}`);
       bullet.owner = null;
+    } else {
+      console.warn('Bullet has no owner during destruction');
     }
     this.release(bullet);
   }
@@ -207,18 +242,13 @@ const powerUpTypes = {
     effect: player => {
       clearTimeout(player.rapidFireTimeout);
       player.rapidFire = true;
-      player.maxBullets = 20;
       player.bulletSpeed = 0.18;
-      player.fireRate = 150;
+      console.log('Rapid Fire applied: bulletSpeed=0.18');
       player.rapidFireTimeout = setTimeout(() => {
         player.rapidFire = false;
-        player.maxBullets = 1;
         player.bulletSpeed = 0.12;
-        player.fireRate = 300;
-        player.currentBullets = Math.min(player.currentBullets || 0, 1); // Reset currentBullets
-        player.canShoot = true; // Ensure canShoot is reset
         player.rapidFireTimeout = null;
-        console.log('Rapid Fire power-up expired, shooter state reset');
+        console.log('Rapid Fire expired: bulletSpeed=0.12');
       }, 10000);
       return true;
     },
@@ -271,8 +301,7 @@ const enemyTypes = {
     score: 100,
     scale: 1.0,
     color: 0x888888,
-    bulletSpeed: 0.08,
-    fireRate: 400
+    bulletSpeed: 0.08
   },
   armored: {
     armor: 3,
@@ -281,8 +310,7 @@ const enemyTypes = {
     score: 200,
     scale: 1.0,
     color: 0x666666,
-    bulletSpeed: 0.10,
-    fireRate: 350
+    bulletSpeed: 0.10
   },
   fast: {
     armor: 1,
@@ -291,8 +319,7 @@ const enemyTypes = {
     score: 300,
     scale: 1.0,
     color: 0xaaaaaa,
-    bulletSpeed: 0.12,
-    fireRate: 250
+    bulletSpeed: 0.12
   },
   heavy: {
     armor: 5,
@@ -301,8 +328,7 @@ const enemyTypes = {
     score: 400,
     scale: 1.0,
     color: 0x444444,
-    bulletSpeed: 0.15,
-    fireRate: 500
+    bulletSpeed: 0.15
   }
 };
 
@@ -395,8 +421,9 @@ const createTank = async (x, y, dir, isPlayer, isPlayer2, enemyType, scene, grid
 
   if (isPlayer) {
     group.lives = 3;
-    group.canShoot = true; // Initialize canShoot
-    group.currentBullets = 0; // Initialize bullet counter
+    group.currentBullets = 0;
+  } else {
+    group.currentBullets = 0;
   }
 
   if (!group.parent) {
@@ -584,10 +611,8 @@ const moveTank = (tank, dx, dy, canMove, newDir = null) => {
 };
 
 const shoot = (shooter, isPlayer, scene, gridWidth, gridHeight, soundEffects) => {
-  if (!shooter?.canShoot ||
-      (shooter.currentBullets || 0) >= (shooter.maxBullets || 1) ||
-      !shooter.mesh?.parent) {
-    console.log(`Cannot shoot: canShoot=${shooter?.canShoot}, currentBullets=${shooter.currentBullets}, maxBullets=${shooter.maxBullets}, meshExists=${!!shooter.mesh?.parent}`);
+  if (!shooter?.mesh?.parent) {
+    console.log(`Shoot failed: shooter=${isPlayer ? 'player' : 'enemy'}, hasMesh=${!!shooter.mesh?.parent}`);
     return null;
   }
 
@@ -600,7 +625,7 @@ const shoot = (shooter, isPlayer, scene, gridWidth, gridHeight, soundEffects) =>
 
   const bullet = bulletPool.create(shooter.bulletPower || 1, isPlayer);
   if (!bullet || !bullet.isActive) {
-    console.warn(`Failed to create bullet, pool size: ${bulletPool.pool.length}`);
+    console.warn(`Failed to create bullet, pool size: ${bulletPool.pool.length}, isPlayer: ${isPlayer}`);
     return null;
   }
 
@@ -626,7 +651,7 @@ const shoot = (shooter, isPlayer, scene, gridWidth, gridHeight, soundEffects) =>
   }
 
   shooter.currentBullets = (shooter.currentBullets || 0) + 1;
-  console.log(`Bullet fired, shooter: ${isPlayer ? 'player' : 'enemy'}, currentBullets: ${shooter.currentBullets}, maxBullets: ${shooter.maxBullets}, pool size: ${bulletPool.pool.length}`);
+  console.log(`Bullet fired: shooter=${isPlayer ? 'player' : 'enemy'}, currentBullets=${shooter.currentBullets}, pool size=${bulletPool.pool.length}`);
 
   createMuzzleFlash(barrelTipWorld.x, barrelTipWorld.y, barrelTipWorld.z, dir, scene);
 
@@ -634,18 +659,6 @@ const shoot = (shooter, isPlayer, scene, gridWidth, gridHeight, soundEffects) =>
     soundEffects.shoot.setVolume(0.3);
     soundEffects.shoot.play();
   }
-
-  shooter.canShoot = false;
-  if (shooter.shootTimeout) {
-    clearTimeout(shooter.shootTimeout);
-  }
-  const fireRate = shooter.fireRate || (shooter.rapidFire ? 150 : enemyTypes[shooter.type || 'basic']?.fireRate || 300);
-
-  shooter.shootTimeout = setTimeout(() => {
-    shooter.canShoot = true;
-    shooter.shootTimeout = null;
-    console.log(`Shooter ${isPlayer ? 'player' : 'enemy'} canShoot reset to true, currentBullets: ${shooter.currentBullets}`);
-  }, fireRate);
 
   return bullet;
 };
@@ -668,6 +681,8 @@ const applyPowerUp = (tank, type, score, soundEffects) => {
 const handleTankHit = (tank, bullet, score, soundEffects, scene, gameState) => {
   if (!tank?.mesh?.parent || tank.invincible) return { destroyed: false };
 
+  gameState.particles = gameState.particles || [];
+
   tank.armor = tank.armor ?? (tank.isPlayer ? tank.lives : enemyTypes[tank.type || 'basic'].armor);
   tank.armor -= bullet.power;
 
@@ -684,18 +699,10 @@ const handleTankHit = (tank, bullet, score, soundEffects, scene, gameState) => {
   } else {
     if (tank.armor <= 0) {
       score.value += enemyTypes[tank.type].score;
-      if (gameState?.particles) {
-        createExplosion(tank.mesh.position.x, tank.mesh.position.y + 0.5, tank.mesh.position.z, 2, scene, gameState, soundEffects);
-      } else {
-        console.warn('handleTankHit: gameState.particles is undefined, skipping explosion');
-      }
+      createExplosion(tank.mesh.position.x, tank.mesh.position.y + 0.5, tank.mesh.position.z, 2, scene, gameState, soundEffects);
       return { destroyed: true };
     } else {
-      if (gameState?.particles) {
-        tank.hitEffect = createHitEffect(tank.mesh.position.x, tank.mesh.position.y + 0.3, tank.mesh.position.z, scene, gameState);
-      } else {
-        console.warn('handleTankHit: gameState.particles is undefined, skipping hit effect');
-      }
+      tank.hitEffect = createHitEffect(tank.mesh.position.x, tank.mesh.position.y + 0.3, tank.mesh.position.z, scene, gameState);
       soundEffects?.hit?.play();
       return { destroyed: false };
     }
@@ -704,7 +711,7 @@ const handleTankHit = (tank, bullet, score, soundEffects, scene, gameState) => {
 
 const respawnPlayer = async (tank, scene, gridWidth, gridHeight) => {
   if (!tank || tank.lives <= 0) {
-    console.log(`Player ${tank.isPlayer1 ? '1' : '2'} cannot respawn: no lives remaining`);
+    console.log(`Player ${tank.isPlayer1 ? '1' : '2'} cannot respawn: lives=${tank.lives}`);
     return false;
   }
 
@@ -722,19 +729,15 @@ const respawnPlayer = async (tank, scene, gridWidth, gridHeight) => {
   tank.moveSpeed = 6;
   tank.bulletPower = 1;
   tank.bulletSpeed = 0.12;
-  tank.maxBullets = 1;
-  tank.fireRate = 300;
   tank.rapidFire = false;
-  tank.armor = tank.lives;
-
-  clearTimeout(tank.rapidFireTimeout);
-  clearTimeout(tank.powerTimeout);
-  clearTimeout(tank.cooldownTimeout);
-  clearTimeout(tank.shootTimeout);
+  tank.rapidFireTimeout = null;
+  tank.powerTimeout = null;
+  tank.cooldownTimeout = null;
 
   const canMove = (x, y, exclude = null) => {
     if (x < 0 || x >= gridWidth || y < 0 || y >= gridHeight) return false;
     return !scene.children.some(child => {
+      if (child === tank) return false;
       if (child === exclude || !child.userData || !child.position) return false;
       const dx = Math.abs(child.position.x - (x - gridWidth / 2 + 0.5));
       const dz = Math.abs(child.position.z - (y - gridHeight / 2 + 0.5));
@@ -771,7 +774,6 @@ const respawnPlayer = async (tank, scene, gridWidth, gridHeight) => {
     return false;
   }
 
-  tank.canShoot = true;
   tank.shield = createShield(tank);
   tank.respawnTimer = 0;
 
@@ -825,69 +827,134 @@ const disposeTank = tank => {
   clearTimeout(tank.rapidFireTimeout);
   clearTimeout(tank.powerTimeout);
   clearTimeout(tank.cooldownTimeout);
-  clearTimeout(tank.shootTimeout);
-
+  tank.rapidFireTimeout = null;
+  tank.powerTimeout = null;
+  tank.cooldownTimeout = null;
   tank.currentBullets = 0;
-  tank.canShoot = true;
 };
 
-const findPathToBase = (startX, startY, gridWidth, gridHeight, canMove) => {
-  const baseX = 30, baseY = 59;
-  const queue = [{ x: startX, y: startY, path: [] }];
-  const visited = new Set();
-  visited.add(`${startX},${startY}`);
+const findPath = (startX, startY, targetX, targetY, gridWidth, gridHeight, canMove) => {
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
 
-  const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]]; // Up, Down, Left, Right
+  let moveDir = null;
+  if (absDx > absDy) {
+    moveDir = dx > 0 ? [1, 0] : [-1, 0];
+  } else if (absDy > 0) {
+    moveDir = dy > 0 ? [0, 1] : [0, -1];
+  }
 
-  while (queue.length > 0) {
-    const { x, y, path } = queue.shift();
-    if (x === baseX && y === baseY) return path;
+  if (moveDir && canMove(startX + moveDir[0], startY + moveDir[1])) {
+    return [moveDir];
+  }
 
-    for (const [dx, dy] of directions) {
-      const newX = x + dx;
-      const newY = y + dy;
-      const key = `${newX},${newY}`;
-
-      if (
-        newX >= 0 && newX < gridWidth &&
-        newY >= 0 && newY < gridHeight &&
-        canMove(newX, newY) &&
-        !visited.has(key)
-      ) {
-        visited.add(key);
-        queue.push({ x: newX, y: newY, path: [...path, [dx, dy]] });
-      }
-    }
+  const validMoves = directions.filter(([dX, dY]) => canMove(startX + dX, startY + dY));
+  if (validMoves.length > 0) {
+    return [validMoves[Math.floor(Math.random() * validMoves.length)]];
   }
 
   return null;
 };
 
-const updateEnemyAI = (enemy, player, player2, gameState, terrainGroup, level) => {
-  if (!enemy?.mesh?.parent || enemy.frozen > 0) return null;
+const hasLineOfSight = (enemy, targetX, targetY, terrainGrid, gridWidth, gridHeight) => {
+  if (enemy.x === undefined || enemy.y === undefined || targetX === undefined || targetY === undefined) {
+    console.warn('Invalid coordinates in hasLineOfSight:', { enemyX: enemy.x, enemyY: enemy.y, targetX, targetY });
+    return false;
+  }
+
+  const dx = targetX - enemy.x;
+  const dy = targetY - enemy.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+
+  const facing = (
+    (enemy.dir === 0 && dx < 0 && absDx > absDy) ||
+    (enemy.dir === 1 && dy > 0 && absDy > absDx) ||
+    (enemy.dir === 2 && dx > 0 && absDx > absDy) ||
+    (enemy.dir === 3 && dy < 0 && absDy > absDx)
+  );
+
+  return facing;
+};
+
+const updateEnemyAI = (enemy, player, player2, gameState, terrainGrid, level) => {
+  if (!enemy?.mesh?.parent || enemy.frozen > 0) {
+    console.log('Enemy AI skipped: invalid enemy or frozen', { hasMesh: !!enemy?.mesh?.parent, frozen: enemy.frozen });
+    return null;
+  }
+  if (!player || !gameState || level === undefined) {
+    console.warn('Invalid arguments to updateEnemyAI', { player: !!player, player2: !!player2, gameState: !!gameState, level });
+    return null;
+  }
 
   enemy.aiTimer++;
   if (enemy.aiTimer < enemyTypes[enemy.type].moveSpeed) return null;
 
   enemy.aiTimer = 0;
 
-  const target = enemy.mesh.userData.enemyRole === 'baseDestroyer'
+  let target = enemy.mesh.userData.enemyRole === 'baseDestroyer'
     ? { x: 30, y: 59 }
-    : (gameState.twoPlayer && player2.mesh?.parent ? enemy.targetPlayer : player);
+    : (gameState.twoPlayer && player2?.mesh?.parent ? enemy.targetPlayer : player);
+
+  if (gameState.twoPlayer && enemy.mesh.userData.enemyRole === 'playerHunter') {
+    const distToPlayer1 = player.mesh?.parent ? Math.hypot(enemy.x - player.x, enemy.y - player.y) : Infinity;
+    const distToPlayer2 = player2?.mesh?.parent ? Math.hypot(enemy.x - player2.x, enemy.y - player2.y) : Infinity;
+    enemy.targetPlayer = distToPlayer1 < distToPlayer2 ? player : player2;
+    target = enemy.targetPlayer;
+  }
+
+  if (enemy.mesh.userData.enemyRole === 'baseDestroyer') {
+    const distToPlayer = player.mesh?.parent ? Math.hypot(enemy.x - player.x, enemy.y - player.y) : Infinity;
+    const distToPlayer2 = gameState.twoPlayer && player2?.mesh?.parent ? Math.hypot(enemy.x - player2.x, enemy.y - player2.y) : Infinity;
+    if (distToPlayer < 5 || distToPlayer2 < 5) {
+      enemy.mesh.userData.enemyRole = 'playerHunter';
+      enemy.targetPlayer = distToPlayer < distToPlayer2 ? player : player2;
+      target = enemy.targetPlayer;
+    }
+  }
 
   let effectiveTarget = target;
   if (!target?.mesh?.parent && enemy.mesh.userData.enemyRole !== 'baseDestroyer') {
-    enemy.targetPlayer = player2.mesh?.parent ? player2 : player;
+    enemy.targetPlayer = player2?.mesh?.parent ? player2 : player;
     effectiveTarget = enemy.targetPlayer;
   }
 
-  const path = findPathToBase(enemy.x, enemy.y, enemy.gridWidth, enemy.gridHeight, enemy.canMove);
-  let dx = 0, dy = 0;
+  const distToTarget = effectiveTarget.mesh?.parent
+    ? Math.hypot(enemy.x - effectiveTarget.x, enemy.y - effectiveTarget.y)
+    : Math.hypot(enemy.x - effectiveTarget.x, enemy.y - effectiveTarget.y);
+  const shootChance = enemyTypes[enemy.type].shootChance * (1 + (level || 1) * 0.1) * (distToTarget < 10 ? 2 : 1);
+  const hasLOS = effectiveTarget.x !== undefined && hasLineOfSight(enemy, effectiveTarget.x, effectiveTarget.y, terrainGrid, enemy.gridWidth, enemy.gridHeight);
 
+  if (hasLOS && Math.random() < shootChance) {
+    const dx = effectiveTarget.x - enemy.x;
+    const dy = effectiveTarget.y - enemy.y;
+    const absDx = Math.abs(dx);
+    const absDy = Math.abs(dy);
+    let newDir = enemy.dir;
+    if (absDx > absDy) {
+      newDir = dx > 0 ? 2 : 0;
+    } else if (absDy > 0) {
+      newDir = dy > 0 ? 1 : 3;
+    }
+    enemy.dir = newDir;
+    enemy.mesh.rotation.y = newDir * Math.PI / 2;
+    const bullet = shoot(enemy, false, enemy.scene, enemy.gridWidth, enemy.gridHeight, enemy.soundEffects);
+    if (bullet) {
+      console.log(`Enemy shot with LOS, target: ${enemy.mesh.userData.enemyRole}, dir: ${newDir}, dist: ${distToTarget.toFixed(2)}`);
+      return bullet;
+    }
+  }
+
+  const path = effectiveTarget.x !== undefined
+    ? findPath(enemy.x, enemy.y, effectiveTarget.x, effectiveTarget.y, enemy.gridWidth, enemy.gridHeight, enemy.canMove)
+    : null;
+
+  let dx = 0, dy = 0;
   if (path && path.length > 0) {
     [dx, dy] = path[0];
   } else {
-    const directions = [[0, -1], [0, 1], [-1, 0], [1, 0]];
     const validMoves = directions.filter(([dX, dY]) => enemy.canMove(enemy.x + dX, enemy.y + dY, enemy));
     if (validMoves.length > 0) {
       [dx, dy] = validMoves[Math.floor(Math.random() * validMoves.length)];
@@ -902,7 +969,7 @@ const updateEnemyAI = (enemy, player, player2, gameState, terrainGroup, level) =
     }
   }
 
-  if (Math.random() < enemyTypes[enemy.type].shootChance * (1 + level * 0.1)) {
+  if (!hasLOS && Math.random() < enemyTypes[enemy.type].shootChance * (1 + (level || 1) * 0.1)) {
     const bullet = shoot(enemy, false, enemy.scene, enemy.gridWidth, enemy.gridHeight, enemy.soundEffects);
     return bullet;
   }
@@ -925,5 +992,6 @@ export {
   createDamageIndicator,
   directions,
   createPowerUp,
-  powerUpUtils
+  powerUpUtils,
+  hasLineOfSight
 };

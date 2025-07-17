@@ -9,12 +9,18 @@
   <link rel="manifest" href="/favicon_io/site.webmanifest">
   <title>Tank City</title>
   <link href="https://fonts.cdnfonts.com/css/press-start-2p" rel="stylesheet">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-DSN8P9SHMX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-DSN8P9SHMX');
+  </script>
   <style>
     body {
       margin: 0;
       overflow: hidden;
       background: #000;
-      touch-action: none;
     }
     canvas {
       display: block;
@@ -231,7 +237,7 @@
   <div id="pauseMenu" style="display: none;">
     <h1>PAUSED</h1>
     <button id="resumeButton">RESUME</button>
-    <button id="restartButton">RESTART</button>
+    <button id="pauseRestartButton">RESTART</button>
     <button id="quitButton">QUIT</button>
   </div>
   <div id="gameOver" style="display: none;">
@@ -257,23 +263,22 @@
     <h3>Goals:</h3>
     <ul>
       <li>Protect the base (eagle) from enemy tanks.</li>
-      <li>Destroy 20 enemy tanks to move to the next stage.</li>
+      <li>Destroy 15 enemy tanks to move to the next stage.</li>
       <li>Grab power-ups for bonuses.</li>
     </ul>
     <h3>Power-Ups:</h3>
     <ul>
-      <li>Health (Red): Adds 1 life</li>
+      <li>Life (White): Adds 1 life, up to 5</li>
       <li>Bomb (Green): Destroys all enemies</li>
       <li>Clock (Blue): Freezes enemies</li>
       <li>Shield (Yellow): Makes you invincible</li>
       <li>Rapid Fire (Pink): Shoot faster</li>
       <li>Power (Cyan): Stronger bullets</li>
-      <li>Life (White): Adds 1 life</li>
       <li>Cooldown (Purple): Move faster</li>
     </ul>
     <h3>Install Game</h3>
     <ul>
-      <li>Tap on your chrome browser to add to your home screen and install.</li>
+      <li>Tap on your Chrome browser to add to your home screen and install.</li>
     </ul>
     <button onclick="document.getElementById('helpModal').style.display = 'none'">CLOSE</button>
   </div>
@@ -287,20 +292,16 @@
     function enterFullScreen() {
       const element = document.documentElement;
       if (element.requestFullscreen) {
-        element.requestFullscreen();
+        element.requestFullscreen().catch(err => console.error('Fullscreen request failed:', err));
       } else if (element.webkitRequestFullscreen) {
-        element.webkitRequestFullscreen();
+        element.webkitRequestFullscreen().catch(err => console.error('Fullscreen request failed:', err));
       } else if (element.mozRequestFullScreen) {
-        element.mozRequestFullScreen();
+        element.mozRequestFullScreen().catch(err => console.error('Fullscreen request failed:', err));
       } else if (element.msRequestFullscreen) {
-        element.msRequestFullscreen();
+        element.msRequestFullscreen().catch(err => console.error('Fullscreen request failed:', err));
       }
       if (screen.orientation && screen.orientation.lock) {
-        try {
-          screen.orientation.lock('landscape');
-        } catch (e) {
-          console.error('Orientation lock failed:', e);
-        }
+        screen.orientation.lock('landscape').catch(err => console.error('Orientation lock failed:', err));
       }
     }
     let lastTouchEnd = 0;
