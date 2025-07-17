@@ -241,9 +241,9 @@ const tileSize = 1;
 const gridWidth = 61;
 const gridHeight = 61;
 
-const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-directionalLight.position.set(45, 75, 45);
+const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+directionalLight.position.set(160, 100, 160);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.set(2048, 2048);
 directionalLight.shadow.camera.left = -90;
@@ -268,8 +268,8 @@ const materials = {
         map: brickTextures.basecolor,
         roughnessMap: brickTextures.roughness,
         normalMap: brickTextures.normal,
-        roughness: 0.95, // Increased roughness to reduce reflections
-        metalness: 0.05  // Decreased metalness for less metallic sheen
+        roughness: 0.95,
+        metalness: 0.05
     }),
     2: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.1 }),
     3: new THREE.MeshStandardMaterial({ color: 0x006994, transparent: true, opacity: 0.7, roughness: 0.95, emissive: 0x002244 }),
@@ -388,18 +388,29 @@ const drawShootCooldown = (cooldown, maxCooldown) => {
     const canvas = shootCooldownCanvas;
     const size = canvas.width;
     const center = size / 2;
-    const radius = size / 2 - 4;
-    const progress = cooldown / maxCooldown;
+    const radius = size / 2 - 6;
+    const progress = Math.max(0, cooldown / maxCooldown);
 
     ctx.clearRect(0, 0, size, size);
 
-    if (cooldown <= 0) return;
-
+    // Draw background ring
     ctx.beginPath();
-    ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * (1 - progress));
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.arc(center, center, radius, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 4;
     ctx.stroke();
+
+    // Draw progress ring (starts full, reduces to zero)
+    if (cooldown > 0) {
+        ctx.beginPath();
+        ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * progress);
+        const gradient = ctx.createLinearGradient(0, 0, size, size);
+        gradient.addColorStop(0, 'rgba(0, 255, 100, 0.8)');
+        gradient.addColorStop(1, 'rgba(0, 100, 50, 0.8)');
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+    }
 };
 
 const setupMobileControls = () => {
@@ -691,6 +702,12 @@ const update = () => {
                 p.damageIndicator = null;
             }
         }
+        // Update shoot cooldown feedback
+        if (p.isPlayer1 && p.shootCooldown > 0) {
+            drawShootCooldown(p.shootCooldown, p.rapidFire ? 15 : 60);
+        } else if (p.isPlayer1 && p.shootCooldown === 0) {
+            drawShootCooldown(0, p.rapidFire ? 15 : 60); // Clear canvas when cooldown is zero
+        }
     });
 
     const handlePlayerMovement = (p, controls) => {
@@ -728,9 +745,6 @@ const update = () => {
                 bullets.push(bullet);
                 playSound(soundEffects.shoot, 0.3);
                 p.shootCooldown = p.rapidFire ? 15 : 60;
-                if (p.isPlayer1) {
-                    drawShootCooldown(p.shootCooldown, p.rapidFire ? 15 : 60);
-                }
             }
         }
     };
@@ -855,7 +869,7 @@ const update = () => {
         powerUpUtils.update(pu, 1 / 60);
         [player, ...(gameState.twoPlayer ? [player2] : [])].forEach(p => {
             if (!p.mesh || !pu.mesh) return;
-            const dist = Math.hypot(p.x - pu.y, p.y - pu.y);
+            const dist = Math.hypot(p.x - pu.x, p.y - pu.y);
             if (dist < 0.5) {
                 if (pu.type === 'B') {
                     enemies.forEach(e => {
