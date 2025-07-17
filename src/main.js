@@ -242,7 +242,7 @@ const gridWidth = 61;
 const gridHeight = 61;
 
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
 directionalLight.position.set(160, 100, 160);
 directionalLight.castShadow = true;
 directionalLight.shadow.mapSize.set(2048, 2048);
