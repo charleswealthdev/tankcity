@@ -1,11 +1,74 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { createTank, moveTank, shoot, updateEnemyAI, applyPowerUp, respawnPlayer, disposeTank, bulletPool, enemyTypes, powerUpTypes, createShield, createDamageIndicator, directions, createPowerUp, powerUpUtils } from './tank.js';
 import { createBrick, generateTerrain, createExplosion, createSpark, disposeBrick, particlePool } from './brick.js';
+
+// Vignette Shader
+const VignetteShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        offset: { value: 1.0 },
+        darkness: { value: 1.0 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float offset;
+        uniform float darkness;
+        varying vec2 vUv;
+        void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
+            gl_FragColor = vec4(mix(texel.rgb, vec3(0.0), dot(uv, uv) * darkness), texel.a);
+        }
+    `
+};
+
+// Film Grain Shader
+const FilmGrainShader = {
+    uniforms: {
+        tDiffuse: { value: null },
+        time: { value: 0.0 },
+        intensity: { value: 0.1 }
+    },
+    vertexShader: `
+        varying vec2 vUv;
+        void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float time;
+        uniform float intensity;
+        varying vec2 vUv;
+        float random(vec2 p) {
+            return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        void main() {
+            vec4 color = texture2D(tDiffuse, vUv);
+            float noise = (random(vUv + time) - 0.5) * intensity;
+            gl_FragColor = vec4(color.rgb + vec3(noise), color.a);
+        }
+    `
+};
 
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x2a2a2a, 10, 100);
 const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+// Set up renderer and composer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -15,8 +78,30 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 document.body.appendChild(renderer.domElement);
 
+const composer = new EffectComposer(renderer);
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+
+const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.8,  // Strength
+    0.4,  // Radius
+    0.85  // Threshold
+);
+composer.addPass(bloomPass);
+
+const vignettePass = new ShaderPass(VignetteShader);
+vignettePass.uniforms.offset.value = 1.0;
+vignettePass.uniforms.darkness.value = 1.2;
+composer.addPass(vignettePass);
+
+const filmGrainPass = new ShaderPass(FilmGrainShader);
+filmGrainPass.uniforms.intensity.value = 0.1;
+composer.addPass(filmGrainPass);
+
 window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
+    composer.setSize(window.innerWidth, window.innerHeight);
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
 });
@@ -183,8 +268,8 @@ const materials = {
         map: brickTextures.basecolor,
         roughnessMap: brickTextures.roughness,
         normalMap: brickTextures.normal,
-        roughness: 0.8,
-        metalness: 0.2
+        roughness: 0.95, // Increased roughness to reduce reflections
+        metalness: 0.05  // Decreased metalness for less metallic sheen
     }),
     2: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.1 }),
     3: new THREE.MeshStandardMaterial({ color: 0x006994, transparent: true, opacity: 0.7, roughness: 0.95, emissive: 0x002244 }),
@@ -280,8 +365,12 @@ const setupShootCooldownCanvas = () => {
     shootCooldownCanvas = document.getElementById('shootCooldownCanvas');
     if (!shootCooldownCanvas) return;
     shootCooldownCtx = shootCooldownCanvas.getContext('2d');
-    shootCooldownCanvas.width = 80;
-    shootCooldownCanvas.height = 80;
+    const shootButton = document.getElementById('shootButton');
+    if (shootButton) {
+        const size = shootButton.offsetWidth;
+        shootCooldownCanvas.width = size;
+        shootCooldownCanvas.height = size;
+    }
 
     window.addEventListener('resize', () => {
         const shootButton = document.getElementById('shootButton');
@@ -322,7 +411,7 @@ const setupMobileControls = () => {
     if (existingStyle) existingStyle.remove();
 
     const isMobile = window.innerWidth <= 1024 || window.matchMedia("(orientation: landscape)").matches;
-    const controlSize = Math.min(window.innerWidth, window.innerHeight) * 0.15;
+    const controlSize = Math.min(window.innerWidth, window.innerHeight) * 0.25;
 
     joystickZone = document.createElement('div');
     joystickZone.id = 'joystickZone';
@@ -332,6 +421,7 @@ const setupMobileControls = () => {
     joystickZone.style.width = `${controlSize}px`;
     joystickZone.style.height = `${controlSize}px`;
     joystickZone.style.zIndex = '10000';
+    joystickZone.style.display = gameState.running && isMobile ? 'block' : 'none';
     document.body.appendChild(joystickZone);
 
     shootButton = document.createElement('div');
@@ -345,7 +435,7 @@ const setupMobileControls = () => {
     shootButton.style.borderRadius = '50%';
     shootButton.style.border = '2px solid #fff';
     shootButton.style.zIndex = '10000';
-    shootButton.style.display = isMobile ? 'flex' : 'none';
+    shootButton.style.display = gameState.running && isMobile ? 'flex' : 'none';
     shootButton.style.alignItems = 'center';
     shootButton.style.justifyContent = 'center';
     shootButton.style.overflow = 'hidden';
@@ -360,7 +450,7 @@ const setupMobileControls = () => {
     style.id = 'mobileControlsStyle';
     style.textContent = `
         #joystickZone, #shootButton {
-            display: ${isMobile ? 'block' : 'none'} !important;
+            display: ${gameState.running && isMobile ? 'block' : 'none'} !important;
         }
         #shootCooldownCanvas {
             position: absolute;
@@ -371,9 +461,17 @@ const setupMobileControls = () => {
             pointer-events: none;
         }
         @media (max-width: 1024px), (orientation: landscape) {
-            #joystickZone, #shootButton {
-                display: block !important;
-                visibility: visible !important;
+            #joystickZone {
+                display: ${gameState.running ? 'block' : 'none'} !important;
+                visibility: ${gameState.running ? 'visible' : 'hidden'} !important;
+                width: clamp(120px, 25vw, 150px);
+                height: clamp(120px, 25vw, 150px);
+            }
+            #shootButton {
+                display: ${gameState.running ? 'flex' : 'none'} !important;
+                visibility: ${gameState.running ? 'visible' : 'hidden'} !important;
+                width: clamp(100px, 20vw, 120px);
+                height: clamp(100px, 20vw, 120px);
             }
             #shootCooldownCanvas {
                 display: block !important;
@@ -442,9 +540,13 @@ const togglePause = () => {
     const pauseMenu = document.getElementById('pauseMenu');
     const hud = document.getElementById('hud');
     const pauseButton = document.getElementById('pauseButton');
+    const joystickZone = document.getElementById('joystickZone');
+    const shootButton = document.getElementById('shootButton');
     if (pauseMenu) pauseMenu.style.display = gameState.paused ? 'block' : 'none';
     if (hud) hud.style.display = gameState.paused ? 'none' : 'block';
     if (pauseButton) pauseButton.style.display = gameState.paused ? 'none' : 'block';
+    if (joystickZone) joystickZone.style.display = gameState.paused || !gameState.running ? 'none' : 'block';
+    if (shootButton) shootButton.style.display = gameState.paused || !gameState.running ? 'none' : 'flex';
     if (gameState.paused) {
         pauseAllSounds();
     } else if (audioLoaded.bgm) {
@@ -459,9 +561,13 @@ document.addEventListener('visibilitychange', () => {
         const pauseMenu = document.getElementById('pauseMenu');
         const hud = document.getElementById('hud');
         const pauseButton = document.getElementById('pauseButton');
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
         if (pauseMenu) pauseMenu.style.display = 'block';
         if (hud) hud.style.display = 'none';
         if (pauseButton) pauseButton.style.display = 'none';
+        if (joystickZone) joystickZone.style.display = 'none';
+        if (shootButton) shootButton.style.display = 'none';
         pauseAllSounds();
     } else if (document.visibilityState === 'visible' && gameState.paused && gameState.autoPaused) {
         gameState.paused = false;
@@ -469,9 +575,14 @@ document.addEventListener('visibilitychange', () => {
         const pauseMenu = document.getElementById('pauseMenu');
         const hud = document.getElementById('hud');
         const pauseButton = document.getElementById('pauseButton');
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
+        const isMobile = window.innerWidth <= 1024 || window.matchMedia("(orientation: landscape)").matches;
         if (pauseMenu) pauseMenu.style.display = 'none';
         if (hud) hud.style.display = 'block';
         if (pauseButton) pauseButton.style.display = 'block';
+        if (joystickZone) joystickZone.style.display = isMobile ? 'block' : 'none';
+        if (shootButton) shootButton.style.display = isMobile ? 'flex' : 'none';
         if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
     }
 });
@@ -518,6 +629,8 @@ const update = () => {
         }
         gameState.lastGameplayEvent = now;
     }
+
+    filmGrainPass.uniforms.time.value = now * 0.001;
 
     if (flashTimer > 0) {
         flashTimer--;
@@ -742,7 +855,7 @@ const update = () => {
         powerUpUtils.update(pu, 1 / 60);
         [player, ...(gameState.twoPlayer ? [player2] : [])].forEach(p => {
             if (!p.mesh || !pu.mesh) return;
-            const dist = Math.hypot(p.x - pu.x, p.y - pu.y);
+            const dist = Math.hypot(p.x - pu.y, p.y - pu.y);
             if (dist < 0.5) {
                 if (pu.type === 'B') {
                     enemies.forEach(e => {
@@ -853,7 +966,7 @@ const update = () => {
     const baseHealthBar = document.getElementById('baseHealthBar');
     if (baseHealthBar) baseHealthBar.style.width = `${(base.health / base.maxHealth) * 100}%`;
 
-    renderer.render(scene, camera);
+    composer.render();
 };
 
 const gameOver = () => {
@@ -886,6 +999,10 @@ const gameOver = () => {
     if (hud) hud.style.display = 'none';
     const pauseButton = document.getElementById('pauseButton');
     if (pauseButton) pauseButton.style.display = 'none';
+    const joystickZone = document.getElementById('joystickZone');
+    const shootButton = document.getElementById('shootButton');
+    if (joystickZone) joystickZone.style.display = 'none';
+    if (shootButton) shootButton.style.display = 'none';
     if (audioLoaded.bgm) soundEffects.bgm.stop();
 
     // Cleanup
@@ -906,9 +1023,13 @@ const visibilityHandler = () => {
         const pauseMenu = document.getElementById('pauseMenu');
         const hud = document.getElementById('hud');
         const pauseButton = document.getElementById('pauseButton');
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
         if (pauseMenu) pauseMenu.style.display = 'block';
         if (hud) hud.style.display = 'none';
         if (pauseButton) pauseButton.style.display = 'none';
+        if (joystickZone) joystickZone.style.display = 'none';
+        if (shootButton) shootButton.style.display = 'none';
         pauseAllSounds();
     } else if (document.visibilityState === 'visible' && gameState.paused && gameState.autoPaused) {
         gameState.paused = false;
@@ -916,9 +1037,14 @@ const visibilityHandler = () => {
         const pauseMenu = document.getElementById('pauseMenu');
         const hud = document.getElementById('hud');
         const pauseButton = document.getElementById('pauseButton');
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
+        const isMobile = window.innerWidth <= 1024 || window.matchMedia("(orientation: landscape)").matches;
         if (pauseMenu) pauseMenu.style.display = 'none';
         if (hud) hud.style.display = 'block';
         if (pauseButton) pauseButton.style.display = 'block';
+        if (joystickZone) joystickZone.style.display = isMobile ? 'block' : 'none';
+        if (shootButton) shootButton.style.display = isMobile ? 'flex' : 'none';
         if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
     }
 };
@@ -1010,6 +1136,10 @@ const resetGame = async () => {
     if (hud) hud.style.display = 'none';
     const pauseButton = document.getElementById('pauseButton');
     if (pauseButton) pauseButton.style.display = 'none';
+    const joystickZone = document.getElementById('joystickZone');
+    const shootButton = document.getElementById('shootButton');
+    if (joystickZone) joystickZone.style.display = 'none';
+    if (shootButton) shootButton.style.display = 'none';
     const baseHealthBar = document.getElementById('baseHealthBar');
     if (baseHealthBar) baseHealthBar.style.width = '100%';
     flashTimer = 0;
@@ -1053,6 +1183,11 @@ const init = async () => {
         if (pauseButton) pauseButton.style.display = 'block';
         const hud = document.getElementById('hud');
         if (hud) hud.style.display = 'block';
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
+        const isMobile = window.innerWidth <= 1024 || window.matchMedia("(orientation: landscape)").matches;
+        if (joystickZone) joystickZone.style.display = isMobile ? 'block' : 'none';
+        if (shootButton) shootButton.style.display = isMobile ? 'flex' : 'none';
         if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
         setupMobileControls();
     } catch (error) {
@@ -1102,6 +1237,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('pauseMenu').style.display = 'none';
         document.getElementById('hud').style.display = 'block';
         document.getElementById('pauseButton').style.display = 'block';
+        const joystickZone = document.getElementById('joystickZone');
+        const shootButton = document.getElementById('shootButton');
+        const isMobile = window.innerWidth <= 1024 || window.matchMedia("(orientation: landscape)").matches;
+        if (joystickZone) joystickZone.style.display = isMobile ? 'block' : 'none';
+        if (shootButton) shootButton.style.display = isMobile ? 'flex' : 'none';
         if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
         setupMobileControls();
     });
