@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -86,39 +85,17 @@ rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
     texture.dispose();
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
-// Load .glb file for environment background
-const gltfLoader = new GLTFLoader();
-gltfLoader.load(
-    '/ship_in_clouds.glb',
-    (gltf) => {
-        const sky = gltf.scene;
-        sky.scale.set(350, 350, 350); // Scale to enclose game world
-        sky.position.set(0, 0, 0);
-        sky.traverse(child => {
-            if (child.isMesh) {
-                child.material = new THREE.MeshBasicMaterial({
-                    map: child.material.map || fallbackTexture,
-                    side: THREE.BackSide,
-                    fog: false
-                });
-            }
-        });
-        scene.add(sky);
-    },
-    undefined,
-    (error) => {
-        console.error('Failed to load .glb sky:', error);
-        // Fallback to a basic sphere if .glb fails
-        const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
-        const skyMaterial = new THREE.MeshBasicMaterial({
-            map: fallbackTexture,
-            side: THREE.BackSide,
-            fog: false
-        });
-        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-        scene.add(sky);
-    }
-);
+// Load sunset texture for environment model
+const sunsetTexture = textureLoader.load('/beautiful-sky-sunset-sun-clouds-landscape-nature-background.jpg', undefined, undefined, (error) => console.error('Failed to load sunset texture:', error)) || fallbackTexture;
+sunsetTexture.mapping = THREE.EquirectangularReflectionMapping;
+const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+const skyMaterial = new THREE.MeshBasicMaterial({
+    map: sunsetTexture,
+    side: THREE.BackSide,
+    fog: false
+});
+const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+scene.add(sky);
 
 const sunLight = new THREE.PointLight(0xffa500, 1.0, 800); // Warm orange light for sunset
 sunLight.position.set(50, 20, 50); // Low position for setting sun
