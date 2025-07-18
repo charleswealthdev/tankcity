@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -7,39 +8,11 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { createTank, moveTank, shoot, updateEnemyAI, applyPowerUp, respawnPlayer, disposeTank, bulletPool, enemyTypes, powerUpTypes, createShield, createDamageIndicator, directions, createPowerUp, powerUpUtils } from './tank.js';
 import { createBrick, generateTerrain, createExplosion, createSpark, disposeBrick, particlePool } from './brick.js';
 
-// Vignette Shader
-const VignetteShader = {
-    uniforms: {
-        tDiffuse: { value: null },
-        offset: { value: 1.0 },
-        darkness: { value: 1.0 }
-    },
-    vertexShader: `
-        varying vec2 vUv;
-        void main() {
-            vUv = uv;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float offset;
-        uniform float darkness;
-        varying vec2 vUv;
-        void main() {
-            vec4 texel = texture2D(tDiffuse, vUv);
-            vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
-            gl_FragColor = vec4(mix(texel.rgb, vec3(0.0), dot(uv, uv) * darkness), texel.a);
-        }
-    `
-};
-
-// Film Grain Shader
 const FilmGrainShader = {
     uniforms: {
         tDiffuse: { value: null },
         time: { value: 0.0 },
-        intensity: { value: 0.1 }
+        intensity: { value: 0.05 }
     },
     vertexShader: `
         varying vec2 vUv;
@@ -65,17 +38,16 @@ const FilmGrainShader = {
 };
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x2a2a2a, 10, 100);
+scene.fog = new THREE.Fog(0x2a2a2a, 20, 120);
 const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
 
-// Set up renderer and composer
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.5;
 document.body.appendChild(renderer.domElement);
 
 const composer = new EffectComposer(renderer);
@@ -84,19 +56,14 @@ composer.addPass(renderPass);
 
 const bloomPass = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.8,  // Strength
-    0.4,  // Radius
-    0.85  // Threshold
+    0.4,
+    0.2,
+    0.85
 );
 composer.addPass(bloomPass);
 
-const vignettePass = new ShaderPass(VignetteShader);
-vignettePass.uniforms.offset.value = 1.0;
-vignettePass.uniforms.darkness.value = 1.2;
-composer.addPass(vignettePass);
-
 const filmGrainPass = new ShaderPass(FilmGrainShader);
-filmGrainPass.uniforms.intensity.value = 0.1;
+filmGrainPass.uniforms.intensity.value = 0.05;
 composer.addPass(filmGrainPass);
 
 window.addEventListener('resize', () => {
@@ -106,23 +73,109 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
 });
 
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+pmremGenerator.compileEquirectangularShader();
+const textureLoader = new THREE.TextureLoader();
+const fallbackTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQYA4eB4YgAAAABJRU5ErkJggg==');
+
 const rgbeLoader = new RGBELoader();
 rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
     texture.mapping = THREE.EquirectangularReflectionMapping;
-    scene.environment = texture;
+    const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+    scene.environment = envMap;
+    texture.dispose();
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
-const textureLoader = new THREE.TextureLoader();
-const fallbackTexture = new THREE.TextureLoader().load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQYA4eB4YgAAAABJRU5ErkJggg==');
+// Load .glb file for environment background
+const gltfLoader = new GLTFLoader();
+gltfLoader.load(
+    '/ship_in_clouds.glb',
+    (gltf) => {
+        const sky = gltf.scene;
+        sky.scale.set(350, 350, 350); // Scale to enclose game world
+        sky.position.set(0, 0, 0);
+        sky.traverse(child => {
+            if (child.isMesh) {
+                child.material = new THREE.MeshBasicMaterial({
+                    map: child.material.map || fallbackTexture,
+                    side: THREE.BackSide,
+                    fog: false
+                });
+            }
+        });
+        scene.add(sky);
+    },
+    undefined,
+    (error) => {
+        console.error('Failed to load .glb sky:', error);
+        // Fallback to a basic sphere if .glb fails
+        const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+        const skyMaterial = new THREE.MeshBasicMaterial({
+            map: fallbackTexture,
+            side: THREE.BackSide,
+            fog: false
+        });
+        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+        scene.add(sky);
+    }
+);
+
+const sunLight = new THREE.PointLight(0xffa500, 1.0, 800); // Warm orange light for sunset
+sunLight.position.set(50, 20, 50); // Low position for setting sun
+sunLight.castShadow = false;
+scene.add(sunLight);
+
+const volumetricMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        lightPos: { value: sunLight.position },
+        density: { value: 0.008 },
+        color: { value: new THREE.Color(0xffa500) } // Match light color
+    },
+    vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+            vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+    `,
+    fragmentShader: `
+        uniform vec3 lightPos;
+        uniform float density;
+        uniform vec3 color;
+        varying vec3 vWorldPosition;
+        void main() {
+            float dist = length(vWorldPosition - lightPos);
+            float intensity = exp(-dist * density);
+            gl_FragColor = vec4(color * intensity, intensity * 0.3);
+        }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+});
+const volumetricSphere = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 16), volumetricMaterial);
+volumetricSphere.position.copy(sunLight.position);
+scene.add(volumetricSphere);
+
+const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Dimmed for evening
+const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+directionalLight.position.set(100, 80, 100);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.set(1024, 1024);
+directionalLight.shadow.camera.left = -80;
+directionalLight.shadow.camera.right = 80;
+directionalLight.shadow.camera.top = 80;
+directionalLight.shadow.camera.bottom = -80;
+scene.add(ambientLight, directionalLight);
 
 const groundTextures = {
     basecolor: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_BaseColor.jpg', undefined, undefined, (error) => console.error('Failed to load ground basecolor:', error)) || fallbackTexture,
     roughness: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load ground roughness:', error)) || fallbackTexture,
-    normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.png', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture
+    normal: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_Normal.png', undefined, undefined, (error) => console.error('Failed to load ground normal:', error)) || fallbackTexture,
+    ao: textureLoader.load('/Poliigon_StoneQuartzite_8060/1K/Poliigon_StoneQuartzite_8060_AO.jpg', undefined, undefined, (error) => console.error('Failed to load ground AO:', error)) || fallbackTexture
 };
 Object.values(groundTextures).forEach(tex => {
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(48, 48);
+    tex.repeat.set(32, 32);
 });
 const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(150, 150),
@@ -130,14 +183,42 @@ const floor = new THREE.Mesh(
         map: groundTextures.basecolor,
         roughnessMap: groundTextures.roughness,
         normalMap: groundTextures.normal,
-        roughness: 0.9,
-        metalness: 0.1
+        aoMap: groundTextures.ao,
+        roughness: 0.8,
+        metalness: 0.05,
+        aoMapIntensity: 0.8,
+        envMapIntensity: 0.6
     })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.position.y = -0.1;
 floor.receiveShadow = true;
 scene.add(floor);
+
+const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+const particleMaterial = new THREE.MeshBasicMaterial({
+    color: 0xaaaaaa,
+    transparent: true,
+    opacity: 0.3,
+    blending: THREE.AdditiveBlending
+});
+const ambientParticles = new THREE.Group();
+const particleCount = 50;
+for (let i = 0; i < particleCount; i++) {
+    const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+    particle.position.set(
+        (Math.random() - 0.5) * 80,
+        Math.random() * 8 + 0.5,
+        (Math.random() - 0.5) * 80
+    );
+    particle.userData.velocity = new THREE.Vector3(
+        (Math.random() - 0.5) * 0.015,
+        (Math.random() - 0.5) * 0.008,
+        (Math.random() - 0.5) * 0.015
+    );
+    ambientParticles.add(particle);
+}
+scene.add(ambientParticles);
 
 const listener = new THREE.AudioListener();
 camera.add(listener);
@@ -241,17 +322,6 @@ const tileSize = 1;
 const gridWidth = 61;
 const gridHeight = 61;
 
-const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
-const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
-directionalLight.position.set(160, 100, 160);
-directionalLight.castShadow = true;
-directionalLight.shadow.mapSize.set(2048, 2048);
-directionalLight.shadow.camera.left = -90;
-directionalLight.shadow.camera.right = 90;
-directionalLight.shadow.camera.top = 90;
-directionalLight.shadow.camera.bottom = -90;
-scene.add(ambientLight, directionalLight);
-
 const brickTextures = {
     basecolor: textureLoader.load('/Bricks080C_1K-JPG/Bricks080C_1K-JPG_Color.jpg', undefined, undefined, (error) => console.error('Failed to load brick basecolor:', error)) || fallbackTexture,
     roughness: textureLoader.load('/Bricks080C_1K-JPG/Bricks080C_1K-JPG_Roughness.jpg', undefined, undefined, (error) => console.error('Failed to load brick roughness:', error)) || fallbackTexture,
@@ -268,11 +338,11 @@ const materials = {
         map: brickTextures.basecolor,
         roughnessMap: brickTextures.roughness,
         normalMap: brickTextures.normal,
-        roughness: 0.95,
+        roughness: 0.9,
         metalness: 0.05
     }),
-    2: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.1 }),
-    3: new THREE.MeshStandardMaterial({ color: 0x006994, transparent: true, opacity: 0.7, roughness: 0.95, emissive: 0x002244 }),
+    2: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.8, roughness: 0.2 }),
+    3: new THREE.MeshStandardMaterial({ color: 0x006994, transparent: true, opacity: 0.6, roughness: 0.9, emissive: 0x002244 }),
     4: new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0x331100, metalness: 0.3, roughness: 0.7 })
 };
 
@@ -393,14 +463,12 @@ const drawShootCooldown = (cooldown, maxCooldown) => {
 
     ctx.clearRect(0, 0, size, size);
 
-    // Draw background ring
     ctx.beginPath();
     ctx.arc(center, center, radius, 0, 2 * Math.PI);
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 4;
     ctx.stroke();
 
-    // Draw progress ring (starts full, reduces to zero)
     if (cooldown > 0) {
         ctx.beginPath();
         ctx.arc(center, center, radius, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * progress);
@@ -641,6 +709,27 @@ const update = () => {
         gameState.lastGameplayEvent = now;
     }
 
+    volumetricSphere.position.copy(sunLight.position);
+    ambientParticles.children.forEach(particle => {
+        particle.position.add(particle.userData.velocity);
+        if (particle.position.y < 0.5 || particle.position.y > 8) {
+            particle.userData.velocity.y *= -1;
+        }
+        if (Math.abs(particle.position.x) > 40 || Math.abs(particle.position.z) > 40) {
+            particle.userData.velocity.set(
+                (Math.random() - 0.5) * 0.015,
+                (Math.random() - 0.5) * 0.008,
+                (Math.random() - 0.5) * 0.015
+            );
+            particle.position.set(
+                (Math.random() - 0.5) * 80,
+                Math.random() * 8 + 0.5,
+                (Math.random() - 0.5) * 80
+            );
+        }
+        particle.material.opacity = 0.3 + Math.sin(now * 0.002 + particle.position.x) * 0.08;
+    });
+
     filmGrainPass.uniforms.time.value = now * 0.001;
 
     if (flashTimer > 0) {
@@ -702,11 +791,10 @@ const update = () => {
                 p.damageIndicator = null;
             }
         }
-        // Update shoot cooldown feedback
         if (p.isPlayer1 && p.shootCooldown > 0) {
             drawShootCooldown(p.shootCooldown, p.rapidFire ? 15 : 60);
         } else if (p.isPlayer1 && p.shootCooldown === 0) {
-            drawShootCooldown(0, p.rapidFire ? 15 : 60); // Clear canvas when cooldown is zero
+            drawShootCooldown(0, p.rapidFire ? 15 : 60);
         }
     });
 
@@ -854,7 +942,7 @@ const update = () => {
                     result.tank.mesh = null;
                     result.tank.respawnTimer = 120;
                     if (result.tank.lives <= 0) {
-                        result.tank.respawnTimer = 0; // Prevent respawn attempts
+                        result.tank.respawnTimer = 0;
                     }
                 }
             }
@@ -869,7 +957,7 @@ const update = () => {
         powerUpUtils.update(pu, 1 / 60);
         [player, ...(gameState.twoPlayer ? [player2] : [])].forEach(p => {
             if (!p.mesh || !pu.mesh) return;
-            const dist = Math.hypot(p.x - pu.x, p.y - pu.y);
+            const dist = Math.hypot(p.x - pu.y, p.y - pu.y);
             if (dist < 0.5) {
                 if (pu.type === 'B') {
                     enemies.forEach(e => {
@@ -1019,7 +1107,6 @@ const gameOver = () => {
     if (shootButton) shootButton.style.display = 'none';
     if (audioLoaded.bgm) soundEffects.bgm.stop();
 
-    // Cleanup
     document.removeEventListener('keydown', keyHandler);
     document.removeEventListener('keyup', keyHandler);
     document.removeEventListener('visibilitychange', visibilityHandler);
@@ -1085,7 +1172,6 @@ const resetGame = async () => {
     gameState.cameraShake = 0;
     gameState.levelProgress = 0;
 
-    // Dispose of all game objects
     [player, player2, base].forEach(entity => {
         if (entity.mesh) disposeTank(entity);
     });
@@ -1096,7 +1182,6 @@ const resetGame = async () => {
     bulletPool.dispose();
     particlePool.dispose();
 
-    // Clear arrays
     enemies = [];
     bullets = [];
     powerUps = [];
@@ -1105,7 +1190,6 @@ const resetGame = async () => {
     level = 1;
     score.value = 0;
 
-    // Reset player states
     player = {
         x: 20, y: 59, dir: 3, lives: 3, invincible: false, shieldTime: 0,
         mesh: null, moveCooldown: 0, canShoot: true, bulletSpeed: 0.2,
@@ -1124,7 +1208,6 @@ const resetGame = async () => {
     };
     base = { x: 30, y: 59, mesh: null, health: levelConfig[1].baseHealth, maxHealth: levelConfig[1].baseHealth };
 
-    // Reset terrain
     terrainGroup.children = [];
     bricks.length = 0;
     const newTerrain = generateTerrain(gridWidth, gridHeight);
@@ -1141,7 +1224,6 @@ const resetGame = async () => {
         });
     });
 
-    // Reset UI
     const gameOverElement = document.getElementById('gameOver');
     if (gameOverElement) gameOverElement.style.display = 'none';
     const menu = document.getElementById('menu');
@@ -1158,14 +1240,9 @@ const resetGame = async () => {
     if (baseHealthBar) baseHealthBar.style.width = '100%';
     flashTimer = 0;
 
-    // Reinitialize controls
-    setupMobileControls();
-
-    // Reset audio
     pauseAllSounds();
     if (audioLoaded.bgm) playSound(soundEffects.bgm, 0.3);
 
-    // Reattach event listeners
     document.removeEventListener('keydown', keyHandler);
     document.removeEventListener('keyup', keyHandler);
     document.removeEventListener('visibilitychange', visibilityHandler);
