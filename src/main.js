@@ -6,6 +6,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { createTank, moveTank, shoot, updateEnemyAI, applyPowerUp, respawnPlayer, disposeTank, bulletPool, enemyTypes, powerUpTypes, createShield, createDamageIndicator, directions, createPowerUp, powerUpUtils } from './tank.js';
 import { createBrick, generateTerrain, createExplosion, createSpark, disposeBrick, particlePool } from './brick.js';
+import { createEnhancedEnvironment } from './environment.js';
 
 const FilmGrainShader = {
     uniforms: {
@@ -39,6 +40,8 @@ const FilmGrainShader = {
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x2a2a2a, 20, 120);
 const camera = new THREE.PerspectiveCamera(85, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.far = 1000; // Ensure far plane accommodates large sky sphere
+camera.updateProjectionMatrix();
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -48,6 +51,9 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.5;
 document.body.appendChild(renderer.domElement);
+
+const textureLoader = new THREE.TextureLoader();
+const environment = createEnhancedEnvironment(scene, renderer, textureLoader);
 
 const composer = new EffectComposer(renderer);
 const renderPass = new RenderPass(scene, camera);
@@ -74,7 +80,6 @@ window.addEventListener('resize', () => {
 
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
-const textureLoader = new THREE.TextureLoader();
 const fallbackTexture = textureLoader.load('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQYA4eB4YgAAAABJRU5ErkJggg==');
 
 const rgbeLoader = new RGBELoader();
@@ -85,55 +90,7 @@ rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
     texture.dispose();
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
-// Load sunset texture for environment model
-const sunsetTexture = textureLoader.load('/beautiful-sky-sunset-sun-clouds-landscape-nature-background.jpg', undefined, undefined, (error) => console.error('Failed to load sunset texture:', error)) || fallbackTexture;
-sunsetTexture.mapping = THREE.EquirectangularReflectionMapping;
-const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
-const skyMaterial = new THREE.MeshBasicMaterial({
-    map: sunsetTexture,
-    side: THREE.BackSide,
-    fog: false
-});
-const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-scene.add(sky);
-
-const sunLight = new THREE.PointLight(0xffa500, 1.0, 800); // Warm orange light for sunset
-sunLight.position.set(50, 20, 50); // Low position for setting sun
-sunLight.castShadow = false;
-scene.add(sunLight);
-
-const volumetricMaterial = new THREE.ShaderMaterial({
-    uniforms: {
-        lightPos: { value: sunLight.position },
-        density: { value: 0.008 },
-        color: { value: new THREE.Color(0xffa500) } // Match light color
-    },
-    vertexShader: `
-        varying vec3 vWorldPosition;
-        void main() {
-            vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-    `,
-    fragmentShader: `
-        uniform vec3 lightPos;
-        uniform float density;
-        uniform vec3 color;
-        varying vec3 vWorldPosition;
-        void main() {
-            float dist = length(vWorldPosition - lightPos);
-            float intensity = exp(-dist * density);
-            gl_FragColor = vec4(color * intensity, intensity * 0.3);
-        }
-    `,
-    transparent: true,
-    blending: THREE.AdditiveBlending
-});
-const volumetricSphere = new THREE.Mesh(new THREE.SphereGeometry(4, 16, 16), volumetricMaterial);
-volumetricSphere.position.copy(sunLight.position);
-scene.add(volumetricSphere);
-
-const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Dimmed for evening
+const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
 directionalLight.position.set(100, 80, 100);
 directionalLight.castShadow = true;
@@ -172,34 +129,8 @@ floor.position.y = -0.1;
 floor.receiveShadow = true;
 scene.add(floor);
 
-const particleGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-const particleMaterial = new THREE.MeshBasicMaterial({
-    color: 0xaaaaaa,
-    transparent: true,
-    opacity: 0.3,
-    blending: THREE.AdditiveBlending
-});
-const ambientParticles = new THREE.Group();
-const particleCount = 50;
-for (let i = 0; i < particleCount; i++) {
-    const particle = new THREE.Mesh(particleGeometry, particleMaterial);
-    particle.position.set(
-        (Math.random() - 0.5) * 80,
-        Math.random() * 8 + 0.5,
-        (Math.random() - 0.5) * 80
-    );
-    particle.userData.velocity = new THREE.Vector3(
-        (Math.random() - 0.5) * 0.015,
-        (Math.random() - 0.5) * 0.008,
-        (Math.random() - 0.5) * 0.015
-    );
-    ambientParticles.add(particle);
-}
-scene.add(ambientParticles);
-
 const listener = new THREE.AudioListener();
 camera.add(listener);
-const audioLoader = new THREE.AudioLoader();
 const soundEffects = {
     explosion: new THREE.Audio(listener),
     shoot: new THREE.Audio(listener),
@@ -285,6 +216,7 @@ const loadAudioWithRetry = (url, sound, key, retries = 3, delay = 1000) => {
     );
 };
 
+const audioLoader = new THREE.AudioLoader();
 Object.keys(audioFiles).forEach(key => {
     loadAudioWithRetry(audioFiles[key], soundEffects[key], key);
 });
@@ -674,6 +606,8 @@ const update = () => {
     if (!gameState.running || gameState.paused) return;
 
     const now = Date.now();
+    environment.updateEnvironment(now, camera); // Update the enhanced environment
+
     if (now - gameState.lastGameplayEvent >= 60000) {
         if (typeof window.gtag === 'function') {
             window.gtag('event', 'gameplay_active', {
@@ -685,27 +619,6 @@ const update = () => {
         }
         gameState.lastGameplayEvent = now;
     }
-
-    volumetricSphere.position.copy(sunLight.position);
-    ambientParticles.children.forEach(particle => {
-        particle.position.add(particle.userData.velocity);
-        if (particle.position.y < 0.5 || particle.position.y > 8) {
-            particle.userData.velocity.y *= -1;
-        }
-        if (Math.abs(particle.position.x) > 40 || Math.abs(particle.position.z) > 40) {
-            particle.userData.velocity.set(
-                (Math.random() - 0.5) * 0.015,
-                (Math.random() - 0.5) * 0.008,
-                (Math.random() - 0.5) * 0.015
-            );
-            particle.position.set(
-                (Math.random() - 0.5) * 80,
-                Math.random() * 8 + 0.5,
-                (Math.random() - 0.5) * 80
-            );
-        }
-        particle.material.opacity = 0.3 + Math.sin(now * 0.002 + particle.position.x) * 0.08;
-    });
 
     filmGrainPass.uniforms.time.value = now * 0.001;
 
