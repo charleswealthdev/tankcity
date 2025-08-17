@@ -857,7 +857,7 @@ const update = () => {
                         }
                     });
                     enemies = [];
-                    score.value += 1000;
+                    score.value += 100;
                     playSound(soundEffects.powerUp, 0.4);
                 } else if (pu.type === 'C') {
                     enemies.forEach(e => {
