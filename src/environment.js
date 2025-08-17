@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { ShaderMaterial, SphereGeometry, Mesh, BackSide, BufferAttribute } from 'three';
 
-// Perlin noise function for procedural textures
 const noise = `
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
     vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -29,67 +28,22 @@ const noise = `
     }
 `;
 
-export function createEnhancedEnvironment(scene, renderer) {
-    let skyMesh, stars, clouds, moon;
-
-    // Adjust scene fog to blend with vibrant horizon color
-    scene.fog.color.set(0x2a2a4e); // Brighter blue-purple to match new horizon
+export function createEnhancedEnvironment(scene, renderer, textureLoader) {
+    let stars, clouds, moon;
+    scene.fog.color.set(0x2a2a4e);
     scene.fog.near = 20;
     scene.fog.far = 120;
 
-    // Sky with vibrant gradient, aurora, and moon glow
-    const skyGeometry = new SphereGeometry(500, 64, 64);
-    const skyMaterial = new ShaderMaterial({
-        uniforms: {
-            time: { value: 0.0 },
-            horizonColor: { value: new THREE.Color(0x2a2a4e) }, // Vibrant blue-purple
-            zenithColor: { value: new THREE.Color(0x0a0a1a) }, // Darker at zenith
-            moonGlow: { value: new THREE.Color(0x9ab8d8) }, // Brighter moonlight
-            glowIntensity: { value: 0.7 }, // Increased glow
-            auroraIntensity: { value: 0.2 } // Aurora effect
-        },
-        vertexShader: `
-            varying vec3 vPosition;
-            varying vec2 vUv;
-            void main() {
-                vPosition = position;
-                vUv = uv;
-                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            }
-        `,
-        fragmentShader: `
-            ${noise}
-            uniform vec3 horizonColor;
-            uniform vec3 zenithColor;
-            uniform vec3 moonGlow;
-            uniform float glowIntensity;
-            uniform float auroraIntensity;
-            uniform float time;
-            varying vec3 vPosition;
-            varying vec2 vUv;
-            void main() {
-                float t = (vPosition.y + 500.0) / 1000.0;
-                vec3 color = mix(horizonColor, zenithColor, t);
-                // Moon glow
-                vec2 moonPos = vec2(0.7, 0.8);
-                float dist = distance(vUv, moonPos);
-                float glow = exp(-dist * 8.0) * glowIntensity;
-                color += moonGlow * glow;
-                // Aurora effect near horizon
-                float aurora = auroraIntensity * (1.0 - t) * (0.5 + 0.5 * sin(time * 0.5 + vUv.x * 5.0));
-                float n = snoise(vUv * 3.0 + time * 0.2);
-                color += vec3(0.2, 0.4, 0.6) * aurora * (0.5 + 0.5 * n);
-                gl_FragColor = vec4(color, 1.0);
-            }
-        `,
-        side: BackSide
-    });
-    skyMesh = new Mesh(skyGeometry, skyMaterial);
-    scene.add(skyMesh);
+   
+    const backgroundTexture = textureLoader.load('/—Pngtree—game scene fire war light_1498899.jpg');
+    backgroundTexture.mapping = THREE.EquirectangularReflectionMapping;
+    backgroundTexture.colorSpace = THREE.SRGBColorSpace;
+    scene.background = backgroundTexture;
+    scene.environment = backgroundTexture;
 
-    // Stars with varied colors and faster twinkling
+
     const starGeometry = new THREE.BufferGeometry();
-    const starCount = 1500; // Balanced for performance and density
+    const starCount = 1500; 
     const starPositions = new Float32Array(starCount * 3);
     const starScales = new Float32Array(starCount);
     const starTwinkle = new Float32Array(starCount);
@@ -101,14 +55,14 @@ export function createEnhancedEnvironment(scene, renderer) {
         starPositions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
         starPositions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
         starPositions[i * 3 + 2] = radius * Math.cos(phi);
-        starScales[i] = 0.15 + Math.random() * 0.35; // Slightly larger stars
+        starScales[i] = 0.15 + Math.random() * 0.35; 
         starTwinkle[i] = Math.random();
-        // Varied star colors
-        const color = Math.random() < 0.5 ? new THREE.Color(0xffffff) : // White
-                     Math.random() < 0.5 ? new THREE.Color(0xaabbff) : // Blue
-                     Math.random() < 0.5 ? new THREE.Color(0xffaaaa) : // Red
-                     Math.random() < 0.5 ? new THREE.Color(0xffffaa) : // Yellow
-                     new THREE.Color(0xaaffff); // Cyan
+
+        const color = Math.random() < 0.5 ? new THREE.Color(0xffffff) : 
+                     Math.random() < 0.5 ? new THREE.Color(0xaabbff) : 
+                     Math.random() < 0.5 ? new THREE.Color(0xffaaaa) : 
+                     Math.random() < 0.5 ? new THREE.Color(0xffffaa) : 
+                     new THREE.Color(0xaaffff); 
         starColors[i * 3] = color.r;
         starColors[i * 3 + 1] = color.g;
         starColors[i * 3 + 2] = color.b;
@@ -149,13 +103,13 @@ export function createEnhancedEnvironment(scene, renderer) {
     stars = new THREE.Points(starGeometry, starMaterial);
     scene.add(stars);
 
-    // Procedural clouds with layered noise and pulsation
+   
     const cloudGeometry = new SphereGeometry(495, 32, 32);
     const cloudMaterial = new ShaderMaterial({
         uniforms: {
             time: { value: 0.0 },
-            cloudOpacity: { value: 0.3 }, // Increased opacity
-            cloudColor: { value: new THREE.Color(0xaab8d8) } // Tinted with moonlight
+            cloudOpacity: { value: 0.3 },
+            cloudColor: { value: new THREE.Color(0xaab8d8) } 
         },
         vertexShader: `
             varying vec2 vUv;
@@ -187,13 +141,12 @@ export function createEnhancedEnvironment(scene, renderer) {
     clouds = new Mesh(cloudGeometry, cloudMaterial);
     scene.add(clouds);
 
-    // Procedural moon with enhanced detail
-    const moonGeometry = new SphereGeometry(20, 64, 64);
+ const moonGeometry = new SphereGeometry(20, 64, 64);
     const moonMaterial = new ShaderMaterial({
         uniforms: {
             time: { value: 0.0 },
-            moonColor: { value: new THREE.Color(0x9ab8d8) }, // Brighter moon
-            emissiveIntensity: { value: 0.5 } // Stronger glow
+            moonColor: { value: new THREE.Color(0x9ab8d8) },
+            emissiveIntensity: { value: 0.5 } 
         },
         vertexShader: `
             varying vec2 vUv;
@@ -228,27 +181,24 @@ export function createEnhancedEnvironment(scene, renderer) {
     moon = new Mesh(moonGeometry, moonMaterial);
     moon.position.set(300, 200, 300);
     scene.add(moon);
-
-    // Enhanced moonlight
-    const moonLight = new THREE.PointLight(0x9ab8d8, 1.0, 1000); // Brighter light
+    const moonLight = new THREE.PointLight(0x9ab8d8, 1.0, 1000); 
     moonLight.position.copy(moon.position);
     scene.add(moonLight);
 
-    // Subtle ambient light for overall scene brightness
-    const ambientLight = new THREE.AmbientLight(0x2a2a4e, 0.3); // Matches horizon
+    
+    const ambientLight = new THREE.AmbientLight(0x2a2a4e, 0.3); 
     scene.add(ambientLight);
 
-    // Update function for animations
+    
     function updateEnvironment(now, camera) {
         const time = now * 0.001;
-        skyMaterial.uniforms.time.value = time;
         starMaterial.uniforms.time.value = time;
         cloudMaterial.uniforms.time.value = time;
         moonMaterial.uniforms.time.value = time;
         moon.position.x = 300 * Math.cos(time * 0.05);
         moon.position.z = 300 * Math.sin(time * 0.05);
         moonLight.position.copy(moon.position);
-        skyMesh.position.copy(camera.position);
+        
         stars.position.copy(camera.position);
         clouds.position.copy(camera.position);
     }
