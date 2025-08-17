@@ -87,14 +87,14 @@ const particlePool = {
 const createBrick = (x, y, type, tileSize, gridWidth, gridHeight, materials) => {
   const brickType = Math.min(4, Math.max(0, Math.floor(type)));
   const height = brickType === 2 ? 1.3 : brickType === 4 ? 1.5 : 1.2;
-  const isHorizontal = brickType !== 4 ? Math.random() < 0.5 : false; // Base (type 4) is 1x1
-  const width = brickType === 4 ? tileSize : isHorizontal ? tileSize * 6 : tileSize; // 6x1 for non-base
-  const depth = brickType === 4 ? tileSize : isHorizontal ? tileSize : tileSize * 6; // 1x6 for non-base
+  const isHorizontal = brickType !== 4 ? Math.random() < 0.5 : false; 
+  const width = brickType === 6 ? tileSize : isHorizontal ? tileSize * 6 : tileSize; 
+  const depth = brickType === 6 ? tileSize : isHorizontal ? tileSize : tileSize * 6; 
   const geometry = new THREE.BoxGeometry(width, height, depth);
   const material = materials[brickType] || new THREE.MeshStandardMaterial({ color: 0x888888 });
   const mesh = new THREE.Mesh(geometry, material);
   const offsetX = brickType === 4 ? 0 : isHorizontal ? 2.5 : 0; // Center for 6 tiles
-  const offsetZ = brickType === 4 ? 0 : isHorizontal ? 0 : 2.5; // Center for 6 tiles
+  const offsetZ = brickType === 4 ? 0 : isHorizontal ? 0 : 2.5; 
   mesh.position.set(x - gridWidth / 2 + 0.5 + offsetX, height / 2, y - gridHeight / 2 + 0.5 + offsetZ);
   mesh.receiveShadow = true;
   mesh.castShadow = true;
@@ -153,7 +153,7 @@ const generateTerrain = (gridWidth, gridHeight) => {
     }
   });
 
-  // Boundary fence (~30–40 bricks, type 2, 6x1 or 1x6)
+
   const placed = new Set();
   const addFenceBrick = (x, y, isHorizontal) => {
     const cells = isHorizontal ? [[x, y], [x + 1, y], [x + 2, y], [x + 3, y], [x + 4, y], [x + 5, y]] : [[x, y], [x, y + 1], [x, y + 2], [x, y + 3], [x, y + 4], [x, y + 5]];
@@ -165,14 +165,13 @@ const generateTerrain = (gridWidth, gridHeight) => {
     return false;
   };
 
-  // Top and bottom edges (y=0, y=60), skip spawn areas, place every 3 tiles
   for (let x = 0; x < gridWidth - 5; x += 3) {
     if ((x < 18 || x > 22) && (x < 38 || x > 42)) {
       addFenceBrick(x, 0, true);
       addFenceBrick(x, gridHeight - 1, true);
     }
   }
-  // Left and right edges (x=0, x=60), skip base area
+  
   for (let y = 0; y < gridHeight - 5; y += 3) {
     if (y < 56 || y > 59) {
       addFenceBrick(0, y, false);
@@ -180,10 +179,10 @@ const generateTerrain = (gridWidth, gridHeight) => {
     }
   }
 
-  // Random inner bricks (20–60 bricks, type 1 or 2, 6x1 or 1x6)
+  
   const innerWidth = gridWidth - 8;
   const innerHeight = gridHeight - 8;
-  const randomBrickCount = Math.floor(Math.random() * 41) + 20; // 20 to 60 bricks
+  const randomBrickCount = Math.floor(Math.random() * 41) + 20; 
   const avoidAreas = [
     { x: 20, y: 59, radius: 6 }, // Player 1 spawn
     { x: 40, y: 59, radius: 6 }, // Player 2 spawn
@@ -210,7 +209,7 @@ const generateTerrain = (gridWidth, gridHeight) => {
     const y = Math.floor(Math.random() * (innerHeight - 5)) + 4;
     const isHorizontal = Math.random() < 0.5;
     if (isValidPosition(x, y, isHorizontal)) {
-      const type = Math.random() < 0.7 ? 1 : 2; // 70% chance of destructible bricks
+      const type = Math.random() < 0.7 ? 1 : 2; 
       terrain[y][x] = type;
       const cells = isHorizontal ? [[x, y], [x + 1, y], [x + 2, y], [x + 3, y], [x + 4, y], [x + 5, y]] : [[x, y], [x, y + 1], [x, y + 2], [x, y + 3], [x, y + 4], [x, y + 5]];
       cells.forEach(([cx, cy]) => {
@@ -223,7 +222,7 @@ const generateTerrain = (gridWidth, gridHeight) => {
     }
   }
 
-  // Clear player spawn areas
+
   for (let y = 56; y <= 59; y++) {
     for (let x = 18; x <= 22; x++) terrain[y][x] = 0;
     for (let x = 38; x <= 42; x++) terrain[y][x] = 0;

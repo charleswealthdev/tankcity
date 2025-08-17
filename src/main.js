@@ -90,7 +90,7 @@ rgbeLoader.load('/satara_night_1k.hdr', (texture) => {
     texture.dispose();
 }, undefined, (error) => console.error('Failed to load HDRI:', error));
 
-const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
 directionalLight.position.set(100, 80, 100);
 directionalLight.castShadow = true;
@@ -389,6 +389,7 @@ const drawShootCooldown = (cooldown, maxCooldown) => {
         ctx.stroke();
     }
 };
+
 
 const setupMobileControls = () => {
     let joystickZone = document.getElementById('joystickZone');
@@ -857,7 +858,7 @@ const update = () => {
                         }
                     });
                     enemies = [];
-                    score.value += 100;
+                    score.value += 50;
                     playSound(soundEffects.powerUp, 0.4);
                 } else if (pu.type === 'C') {
                     enemies.forEach(e => {

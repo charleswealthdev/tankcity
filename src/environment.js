@@ -35,7 +35,7 @@ export function createEnhancedEnvironment(scene, renderer, textureLoader) {
     scene.fog.far = 120;
 
    
-    const backgroundTexture = textureLoader.load('/—Pngtree—game scene fire war light_1498899.jpg');
+    const backgroundTexture = textureLoader.load('/3d-rocks-fire-with-flames.jpg');
     backgroundTexture.mapping = THREE.EquirectangularReflectionMapping;
     backgroundTexture.colorSpace = THREE.SRGBColorSpace;
     scene.background = backgroundTexture;
